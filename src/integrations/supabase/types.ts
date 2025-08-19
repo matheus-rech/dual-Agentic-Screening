@@ -657,6 +657,30 @@ export type Database = {
           },
         ]
       }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -673,6 +697,10 @@ export type Database = {
       create_embeddings_column_function: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      current_user_has_role: {
+        Args: { _role: Database["public"]["Enums"]["app_role"] }
+        Returns: boolean
       }
       evaluate_ai_screening_agreement: {
         Args: {
@@ -712,6 +740,13 @@ export type Database = {
       halfvec_typmod_in: {
         Args: { "": unknown[] }
         Returns: number
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
       }
       hnsw_bit_support: {
         Args: { "": unknown }
@@ -838,6 +873,7 @@ export type Database = {
         | "named_entity_recognition"
         | "abstract_summarization"
         | "full_text_analysis"
+      app_role: "admin" | "researcher" | "user"
       screening_stage:
         | "title_abstract_screening"
         | "full_text_screening"
@@ -977,6 +1013,7 @@ export const Constants = {
         "abstract_summarization",
         "full_text_analysis",
       ],
+      app_role: ["admin", "researcher", "user"],
       screening_stage: [
         "title_abstract_screening",
         "full_text_screening",

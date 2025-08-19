@@ -9,6 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import Criteria from "./pages/Criteria";
 import Screening from "./pages/Screening";
+import RoleManagementPage from "./pages/RoleManagement";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -34,6 +35,7 @@ const ProtectedApp = () => {
       <Route path="/" element={user ? <Index /> : <Navigate to="/auth" replace />} />
       <Route path="/criteria" element={user ? <Criteria /> : <Navigate to="/auth" replace />} />
       <Route path="/screening" element={user ? <Screening /> : <Navigate to="/auth" replace />} />
+      <Route path="/roles" element={user ? <RoleManagementPage /> : <Navigate to="/auth" replace />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
