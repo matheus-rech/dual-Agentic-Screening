@@ -100,8 +100,18 @@ async function processReferenceWithStreaming(
   const openAIKey = Deno.env.get('OPENAI_API_KEY');
   const geminiKey = Deno.env.get('GEMINI_API_KEY');
 
-  if (!openAIKey || !geminiKey) {
-    throw new Error('API keys not configured');
+  console.log('Checking API keys...');
+  console.log('OpenAI key available:', !!openAIKey);
+  console.log('Gemini key available:', !!geminiKey);
+
+  if (!openAIKey) {
+    console.error('Missing OPENAI_API_KEY');
+    throw new Error('OpenAI API key not configured. Please add it in Supabase settings.');
+  }
+
+  if (!geminiKey) {
+    console.error('Missing GEMINI_API_KEY');  
+    throw new Error('Gemini API key not configured. Please add it in Supabase settings.');
   }
 
   const basePrompt = `
