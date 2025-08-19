@@ -17,35 +17,32 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { DualLLMScreener } from '@/services/aiScreeningService';
-import { StreamingDualLLMScreener, ReasoningStep, ProgressUpdate } from '@/services/streamingScreeningService';
+import { useEnhancedScreening } from '@/hooks/useEnhancedScreening';
 import { useProject } from '@/contexts/ProjectContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
 const ScreeningDashboard = () => {
   const [references, setReferences] = useState([]);
-  const [screeningResults, setScreeningResults] = useState([]);
-  const [isScreening, setIsScreening] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [selectedProject, setSelectedProject] = useState(null);
   const [criteriaData, setCriteriaData] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [agreementFilter, setAgreementFilter] = useState('all');
   const [activeTab, setActiveTab] = useState('references');
-  const [currentReference, setCurrentReference] = useState(null);
-  const [reasoningSteps, setReasoningSteps] = useState([]);
-  const [showReasoningDisplay, setShowReasoningDisplay] = useState(false);
-  const [screeningStats, setScreeningStats] = useState({
-    current: 0,
-    total: 0,
-    percentage: 0,
-    included: 0,
-    excluded: 0,
-    conflicts: 0
-  });
+  
   const { toast } = useToast();
   const { projectData } = useProject();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Use the enhanced screening hook
+  const {
+    isScreening,
+    progress,
+    results: screeningResults,
+    error: screeningError,
+    startScreening,
+    resetScreening
+  } = useEnhancedScreening();
 
   useEffect(() => {
     if (projectData?.id) {
@@ -84,7 +81,7 @@ const ScreeningDashboard = () => {
         
         // Start screening after a short delay to allow UI to update
         setTimeout(() => {
-          startScreening();
+          handleStartScreening();
         }, 1000);
       } else {
         console.log('Dual AI review not enabled, skipping auto-start');
@@ -199,7 +196,7 @@ const ScreeningDashboard = () => {
     }
   };
 
-  const startScreening = async () => {
+  const handleStartScreening = async () => {
     if (!criteriaData || references.length === 0) {
       toast({
         title: "Cannot start screening",
@@ -209,86 +206,39 @@ const ScreeningDashboard = () => {
       return;
     }
 
-    setIsScreening(true);
-    setProgress(0);
-    setScreeningResults([]);
-    setShowReasoningDisplay(true);
-    setReasoningSteps([]);
-    setCurrentReference(null);
-    
-    // Initialize stats
-    setScreeningStats({
-      current: 0,
-      total: references.length,
-      percentage: 0,
-      included: 0,
-      excluded: 0,
-      conflicts: 0
-    });
-
-    console.log('Starting streaming AI screening...');
-
-    const streamer = new StreamingDualLLMScreener();
-    
     try {
-      const referencesToScreen = references.map(ref => ({
-        id: ref.id,
-        title: ref.title,
-        abstract: ref.abstract,
-        authors: ref.authors,
-        journal: ref.journal,
-        year: ref.year,
-        doi: ref.doi
-      }));
-
-      await streamer.startStreaming(
-        referencesToScreen,
-        criteriaData,
-        selectedProject.id,
+      await startScreening(
+        references.map(ref => ({
+          id: ref.id,
+          title: ref.title || '',
+          abstract: ref.abstract || '',
+          authors: ref.authors || '',
+          journal: ref.journal,
+          year: ref.year,
+          doi: ref.doi
+        })),
         {
-          onProgress: (progressUpdate: ProgressUpdate) => {
-            console.log('Progress update:', progressUpdate);
-            setProgress(progressUpdate.percentage);
-            setCurrentReference(progressUpdate.currentReference);
-            setScreeningStats(prev => ({
-              ...prev,
-              current: progressUpdate.current,
-              percentage: progressUpdate.percentage
-            }));
-          },
-          onReasoningStep: (step: ReasoningStep) => {
-            console.log('New reasoning step:', step);
-            setReasoningSteps(prev => [...prev, step]);
-          },
-          onComplete: () => {
-            console.log('Screening completed successfully');
-            setIsScreening(false);
-            setCurrentReference(null);
-            loadReferences(); // Reload to get updated results
-            toast({
-              title: "Screening Complete",
-              description: `Processed ${references.length} references successfully.`,
-            });
-          },
-          onError: (error: string) => {
-            console.error('Streaming error:', error);
-            setIsScreening(false);
-            setCurrentReference(null);
-            toast({
-              title: "Screening Failed",
-              description: error,
-              variant: "destructive",
-            });
-          }
-        }
+          population: criteriaData.population,
+          intervention: criteriaData.intervention,
+          comparator: criteriaData.comparator,
+          outcome: criteriaData.outcome,
+          studyDesigns: criteriaData.study_designs || criteriaData.studyDesigns
+        },
+        selectedProject.id
       );
+      
+      if (!screeningError) {
+        toast({
+          title: "Screening Complete",
+          description: `Processed ${references.length} references successfully.`,
+        });
+        loadReferences(); // Reload to get updated results
+      }
     } catch (error) {
-      console.error('Failed to start streaming:', error);
-      setIsScreening(false);
-      setCurrentReference(null);
+      console.error('Error starting screening:', error);
       toast({
-        title: "Connection Failed",
-        description: "Could not connect to AI screening service. Please try again.",
+        title: "Screening Failed",
+        description: 'Failed to start screening process',
         variant: "destructive",
       });
     }
@@ -324,12 +274,12 @@ const ScreeningDashboard = () => {
 
   // Filter references based on current filters
   const filteredReferences = references.filter(ref => {
-    const result = screeningResults.find(r => r.reference_id === ref.id);
+    const result = screeningResults.find(r => r.referenceId === ref.id);
     
     // Status filter
     if (statusFilter !== 'all') {
       if (!result && statusFilter !== 'pending') return false;
-      if (result && result.final_decision !== statusFilter && statusFilter !== 'pending') return false;
+      if (result && result.finalDecision !== statusFilter && statusFilter !== 'pending') return false;
       if (statusFilter === 'pending' && result) return false;
     }
     
@@ -348,9 +298,9 @@ const ScreeningDashboard = () => {
     ? (screeningResults.filter(result => result.agreement).length / screeningResults.length * 100).toFixed(1)
     : 0;
   
-  const conflictCount = screeningResults.filter(result => !result.agreement).length;
-  const includedCount = screeningResults.filter(result => result.final_decision === 'include').length;
-  const excludedCount = screeningResults.filter(result => result.final_decision === 'exclude').length;
+  const conflictCount = progress.stats.conflicts || screeningResults.filter(result => !result.agreement).length;
+  const includedCount = progress.stats.included || screeningResults.filter(result => result.finalDecision === 'include').length;
+  const excludedCount = progress.stats.excluded || screeningResults.filter(result => result.finalDecision === 'exclude').length;
 
   return (
     <div className="min-h-screen bg-background">
@@ -408,14 +358,14 @@ const ScreeningDashboard = () => {
                 </div>
                 
                 <Button 
-                  onClick={startScreening}
+                  onClick={handleStartScreening}
                   disabled={isScreening || references.length === 0 || !criteriaData}
                   size="lg"
                 >
                   {isScreening ? (
                     <>
                       <div className="animate-spin w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full" />
-                      Screening... ({screeningStats.percentage}%)
+                      Screening... ({progress.stats.percentage.toFixed(1)}%)
                     </>
                   ) : screeningResults.length > 0 ? (
                     <>
@@ -429,14 +379,20 @@ const ScreeningDashboard = () => {
                     </>
                   )}
                 </Button>
+                
+                {screeningError && (
+                  <div className="text-sm text-destructive mt-2">
+                    Error: {screeningError}
+                  </div>
+                )}
               </div>
 
               {/* Live Progress Bar */}
               <ScreeningProgress
                 isVisible={isScreening || screeningResults.length > 0}
-                stats={screeningStats}
-                currentReference={currentReference}
-                isComplete={!isScreening && screeningResults.length > 0}
+                stats={progress.stats}
+                currentReference={progress.currentReference}
+                isComplete={progress.isComplete}
               />
             </div>
           </CardContent>
@@ -445,9 +401,17 @@ const ScreeningDashboard = () => {
         {/* Live Progress Display */}
         <ScreeningProgress
           isVisible={isScreening || screeningResults.length > 0}
-          stats={screeningStats}
-          currentReference={currentReference}
-          isComplete={!isScreening && screeningResults.length > 0}
+          stats={progress.stats}
+          currentReference={progress.currentReference}
+          isComplete={progress.isComplete}
+        />
+
+        {/* Live Reasoning Display */}
+        <ReasoningDisplay 
+          isVisible={isScreening || progress.reasoningSteps.length > 0}
+          currentReference={progress.currentReference}
+          reasoningSteps={progress.reasoningSteps}
+          progress={progress.stats}
         />
 
         {/* Results Summary */}
@@ -516,29 +480,6 @@ const ScreeningDashboard = () => {
           ))}
         </div>
 
-        {/* Progress Display */}
-        {(isScreening || screeningResults.length > 0) && (
-          <div className="mb-6">
-            <ScreeningProgress
-              isVisible={true}
-              stats={screeningStats}
-              currentReference={currentReference}
-              isComplete={!isScreening && screeningResults.length > 0}
-            />
-          </div>
-        )}
-
-        {/* Live Reasoning Display */}
-        {showReasoningDisplay && (
-          <div className="mb-6">
-            <ReasoningDisplay
-              isVisible={showReasoningDisplay}
-              currentReference={currentReference}
-              reasoningSteps={reasoningSteps}
-              progress={screeningStats}
-            />
-          </div>
-        )}
 
         {/* Tab Content */}
         {activeTab === 'references' && (
@@ -581,13 +522,29 @@ const ScreeningDashboard = () => {
 
             <div className="space-y-4">
               {filteredReferences.map((reference) => {
-                const result = screeningResults.find(r => r.reference_id === reference.id);
+                const result = screeningResults.find(r => r.referenceId === reference.id);
+                
+                // Convert DualScreeningResult to expected format for ReferenceCard
+                const aiResult = result ? {
+                  final_decision: result.finalDecision,
+                  agreement: result.agreement,
+                  primary_reviewer: {
+                    decision: result.reviewer1.recommendation,
+                    confidence: result.reviewer1.confidence,
+                    reasoning: result.reviewer1.reasoning
+                  },
+                  secondary_reviewer: {
+                    decision: result.reviewer2.recommendation,
+                    confidence: result.reviewer2.confidence,
+                    reasoning: result.reviewer2.reasoning
+                  }
+                } : null;
                 
                 return (
                   <ReferenceCard
                     key={reference.id}
                     reference={reference}
-                    aiResult={result}
+                    aiResult={aiResult}
                   />
                 );
               })}

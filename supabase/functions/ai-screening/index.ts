@@ -230,7 +230,27 @@ async function callGemini(prompt: string): Promise<AIReviewResult> {
   }
 
   const data = await response.json();
-  const content = data.candidates[0].content.parts[0].text;
+  console.log('Gemini response:', JSON.stringify(data, null, 2));
+  
+  // Fix the parsing issue - add proper error handling and fallbacks
+  let content = '';
+  
+  if (data.candidates && 
+      data.candidates.length > 0 && 
+      data.candidates[0].content && 
+      data.candidates[0].content.parts && 
+      data.candidates[0].content.parts.length > 0) {
+    content = data.candidates[0].content.parts[0].text;
+  } else {
+    console.error('Unexpected Gemini response structure:', data);
+    // Fallback response when Gemini doesn't return expected structure
+    return {
+      recommendation: 'maybe',
+      confidence: 0.1,
+      reasoning: 'Error: Gemini API returned unexpected response structure. Manual review required.',
+      reviewer: 'Gemini (Error)'
+    };
+  }
   
   try {
     const result = JSON.parse(content);

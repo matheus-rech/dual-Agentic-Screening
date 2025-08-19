@@ -544,6 +544,104 @@ export type Database = {
           },
         ]
       }
+      screening_progress: {
+        Row: {
+          completed_count: number
+          conflict_count: number
+          created_at: string
+          current_reference_authors: string | null
+          current_reference_id: string | null
+          current_reference_index: number
+          current_reference_title: string | null
+          estimated_time_remaining: number | null
+          excluded_count: number
+          id: string
+          included_count: number
+          project_id: string
+          session_id: string
+          status: string
+          total_references: number
+          updated_at: string
+        }
+        Insert: {
+          completed_count?: number
+          conflict_count?: number
+          created_at?: string
+          current_reference_authors?: string | null
+          current_reference_id?: string | null
+          current_reference_index?: number
+          current_reference_title?: string | null
+          estimated_time_remaining?: number | null
+          excluded_count?: number
+          id?: string
+          included_count?: number
+          project_id: string
+          session_id: string
+          status?: string
+          total_references: number
+          updated_at?: string
+        }
+        Update: {
+          completed_count?: number
+          conflict_count?: number
+          created_at?: string
+          current_reference_authors?: string | null
+          current_reference_id?: string | null
+          current_reference_index?: number
+          current_reference_title?: string | null
+          estimated_time_remaining?: number | null
+          excluded_count?: number
+          id?: string
+          included_count?: number
+          project_id?: string
+          session_id?: string
+          status?: string
+          total_references?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      screening_reasoning_steps: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          id: string
+          reasoning: string
+          reference_id: string
+          reviewer: string
+          session_id: string
+          step_description: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          reasoning: string
+          reference_id: string
+          reviewer: string
+          session_id: string
+          step_description: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          reasoning?: string
+          reference_id?: string
+          reviewer?: string
+          session_id?: string
+          step_description?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "screening_reasoning_steps_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "screening_progress"
+            referencedColumns: ["session_id"]
+          },
+        ]
+      }
       screening_runs: {
         Row: {
           agreement_rate: number | null

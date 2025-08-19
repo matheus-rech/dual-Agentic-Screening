@@ -1,4 +1,1 @@
 project_id = "jloyjcanvtolhgodeupf"
-
-[functions.ai-screening-stream]
-verify_jwt = false
