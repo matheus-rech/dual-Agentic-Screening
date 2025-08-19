@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import SecurityNotice from '@/components/SecurityNotice';
 
 interface UserRole {
   id: string;
@@ -47,38 +48,54 @@ const RoleManagement = () => {
 
   const loadUserRoles = async () => {
     try {
-      // First get user roles
-      const { data: rolesData, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Use the secure admin function to get users with roles
+      const { data: usersData, error: usersError } = await supabase
+        .rpc('get_users_for_admin');
 
-      if (rolesError) throw rolesError;
+      if (usersError) {
+        if (usersError.message.includes('Access denied')) {
+          // User is not an admin, don't show error
+          setUserRoles([]);
+          return;
+        }
+        throw usersError;
+      }
 
-      // Then get profile data for each user
-      const rolesWithProfiles = await Promise.all(
-        (rolesData || []).map(async (role) => {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('email, full_name')
-            .eq('id', role.user_id)
-            .single();
-          
-          return {
-            ...role,
-            profiles: profile || { email: 'Unknown', full_name: 'Unknown User' }
-          };
-        })
+      // Transform the data to match our interface
+      const transformedRoles = (usersData || []).flatMap(user => 
+        user.roles.length > 0 
+          ? user.roles.map(role => ({
+              id: `${user.user_id}-${role}`, // Create unique ID
+              user_id: user.user_id,
+              role: role as 'admin' | 'researcher' | 'user',
+              created_at: user.created_at,
+              profiles: {
+                email: user.email,
+                full_name: user.full_name || 'Unknown User'
+              }
+            }))
+          : [{
+              id: `${user.user_id}-none`, // For users with no roles
+              user_id: user.user_id,
+              role: 'user' as 'admin' | 'researcher' | 'user',
+              created_at: user.created_at,
+              profiles: {
+                email: user.email,
+                full_name: user.full_name || 'Unknown User'
+              }
+            }]
       );
 
-      setUserRoles(rolesWithProfiles as UserRole[]);
+      setUserRoles(transformedRoles);
     } catch (error) {
       console.error('Error loading user roles:', error);
-      toast({
-        title: "Error loading roles",
-        description: "Failed to load user roles",
-        variant: "destructive",
-      });
+      if (!error.message.includes('Access denied')) {
+        toast({
+          title: "Error loading roles",
+          description: "Failed to load user roles",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -94,14 +111,23 @@ const RoleManagement = () => {
 
     setLoading(true);
     try {
-      // First, find the user by email
-      const { data: profiles, error: profileError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', newUserEmail.toLowerCase().trim())
-        .single();
+      // Use the secure function to find user by email
+      const { data: userData, error: userError } = await supabase
+        .rpc('find_user_by_email', { search_email: newUserEmail.toLowerCase().trim() });
 
-      if (profileError || !profiles) {
+      if (userError) {
+        if (userError.message.includes('Access denied')) {
+          toast({
+            title: "Access denied",
+            description: "You don't have permission to manage user roles",
+            variant: "destructive",
+          });
+          return;
+        }
+        throw userError;
+      }
+
+      if (!userData || userData.length === 0) {
         toast({
           title: "User not found",
           description: "No user found with this email address",
@@ -110,11 +136,13 @@ const RoleManagement = () => {
         return;
       }
 
+      const user = userData[0];
+
       // Then assign the role
       const { error: roleError } = await supabase
         .from('user_roles')
         .upsert({
-          user_id: profiles.id,
+          user_id: user.user_id,
           role: newUserRole
         }, {
           onConflict: 'user_id,role'
@@ -198,6 +226,8 @@ const RoleManagement = () => {
 
   return (
     <div className="space-y-6">
+      <SecurityNotice />
+      
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

@@ -719,6 +719,14 @@ export type Database = {
           final_decision: string
         }[]
       }
+      find_user_by_email: {
+        Args: { search_email: string }
+        Returns: {
+          email: string
+          full_name: string
+          user_id: string
+        }[]
+      }
       get_current_user_profile: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -727,6 +735,16 @@ export type Database = {
           full_name: string
           id: string
           updated_at: string
+        }[]
+      }
+      get_users_for_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          created_at: string
+          email: string
+          full_name: string
+          roles: string[]
+          user_id: string
         }[]
       }
       halfvec_avg: {
