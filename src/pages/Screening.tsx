@@ -412,6 +412,14 @@ const ScreeningDashboard = () => {
           </CardContent>
         </Card>
 
+        {/* Live Progress Display */}
+        <ScreeningProgress
+          isVisible={isScreening || screeningResults.length > 0}
+          stats={screeningStats}
+          currentReference={currentReference}
+          isComplete={!isScreening && screeningResults.length > 0}
+        />
+
         {/* Results Summary */}
         <Card className="mb-8">
           <CardHeader>
