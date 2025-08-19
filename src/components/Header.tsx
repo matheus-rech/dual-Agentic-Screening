@@ -1,14 +1,15 @@
-import { NavLink } from "react-router-dom";
-import { Brain } from "lucide-react";
+import React from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { Brain, LogOut, User } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const Header = () => {
-  const navItems = [
-    { name: "Import", path: "/" },
-    { name: "Criteria", path: "/criteria" },
-    { name: "Screening", path: "/screening" },
-    { name: "Dual Review", path: "/dual-review" },
-    { name: "Results", path: "/results" },
-  ];
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, signOut } = useAuth();
 
   return (
     <header className="bg-card border-b border-border px-6 py-4">
@@ -26,25 +27,32 @@ const Header = () => {
             </p>
           </div>
         </div>
-
-        <nav className="flex items-center gap-8">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.name}
-              to={item.path}
-              className={({ isActive }) =>
-                `text-sm font-medium transition-colors hover:text-primary ${
-                  isActive 
-                    ? "text-primary border-b-2 border-primary pb-1" 
-                    : "text-muted-foreground"
-                }`
-              }
-              end={item.path === "/"}
-            >
-              {item.name}
-            </NavLink>
-          ))}
-        </nav>
+        
+        <div className="flex items-center gap-4">
+          {user && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                  <Avatar className="h-8 w-8">
+                    <AvatarFallback>
+                      {user.email?.charAt(0).toUpperCase() || <User className="h-4 w-4" />}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56" align="end" forceMount>
+                <DropdownMenuItem className="flex-col items-start">
+                  <div className="font-medium">{user.user_metadata?.full_name || 'User'}</div>
+                  <div className="text-xs text-muted-foreground">{user.email}</div>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={signOut}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Sign out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </div>
     </header>
   );

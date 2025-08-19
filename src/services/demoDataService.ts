@@ -118,7 +118,7 @@ export const loadDemoData = async () => {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     
     if (userError || !user) {
-      throw new Error("Authentication required to load demo data");
+      throw new Error("Please sign in to load demo data");
     }
 
     // Create demo project
