@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, CheckCircle, XCircle, AlertCircle, BarChart3, Filter, Download, Users, Edit } from 'lucide-react';
+import { Play, Pause, CheckCircle, XCircle, AlertCircle, BarChart3, Filter, Download, Users, Edit, FileText, Database, Settings } from 'lucide-react';
 import Header from '@/components/Header';
 import ReferenceCard from '@/components/ReferenceCard';
 import CriteriaSummary from '@/components/CriteriaSummary';
+import ScreeningLogs from '@/components/ScreeningLogs';
+import ScreeningAnalytics from '@/components/ScreeningAnalytics';
+import BulkReviewPanel from '@/components/BulkReviewPanel';
+import ExportPanel from '@/components/ExportPanel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +27,7 @@ const ScreeningDashboard = () => {
   const [criteriaData, setCriteriaData] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [agreementFilter, setAgreementFilter] = useState('all');
+  const [activeTab, setActiveTab] = useState('references');
   const { toast } = useToast();
   const { projectData } = useProject();
   const navigate = useNavigate();
@@ -383,22 +388,39 @@ const ScreeningDashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Filters and Actions */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
+        {/* Tab Navigation */}
+        <div className="flex border-b mb-6">
+          {[
+            { id: 'references', label: 'References', icon: FileText },
+            { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+            { id: 'logs', label: 'Logs', icon: Database },
+            { id: 'review', label: 'Bulk Review', icon: Settings },
+            { id: 'export', label: 'Export', icon: Download },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2 border-b-2 transition-colors ${
+                activeTab === tab.id
+                  ? 'border-primary text-primary bg-primary/5'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <tab.icon className="w-4 h-4" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === 'references' && (
+          <Card>
+            <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5" />
+                <FileText className="w-5 h-5" />
                 References ({filteredReferences.length} of {references.length})
               </CardTitle>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" disabled>
-                  <Download className="w-4 h-4 mr-2" />
-                  Export Results
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
+            </CardHeader>
           <CardContent>
             <div className="flex flex-col sm:flex-row gap-4 mb-6">
               <div className="flex items-center gap-2">
@@ -453,6 +475,33 @@ const ScreeningDashboard = () => {
             </div>
           </CardContent>
         </Card>
+        )}
+
+        {activeTab === 'analytics' && selectedProject && (
+          <ScreeningAnalytics projectId={selectedProject.id} />
+        )}
+
+        {activeTab === 'logs' && selectedProject && (
+          <ScreeningLogs projectId={selectedProject.id} />
+        )}
+
+        {activeTab === 'review' && selectedProject && (
+          <BulkReviewPanel 
+            projectId={selectedProject.id}
+            references={references}
+            screeningResults={screeningResults}
+            onReviewComplete={loadReferences}
+          />
+        )}
+
+        {activeTab === 'export' && selectedProject && (
+          <ExportPanel
+            projectId={selectedProject.id}
+            references={references}
+            screeningResults={screeningResults}
+            analytics={null}
+          />
+        )}
       </main>
     </div>
   );

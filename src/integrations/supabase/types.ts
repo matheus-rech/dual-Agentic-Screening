@@ -127,9 +127,12 @@ export type Database = {
           model_agreement_score: number | null
           primary_model_confidence: number | null
           primary_model_decision: string | null
+          processing_duration_ms: number | null
           project_id: string | null
           reference_id: string | null
+          screening_end_time: string | null
           screening_stage: Database["public"]["Enums"]["screening_stage"]
+          screening_start_time: string | null
           secondary_model_confidence: number | null
           secondary_model_decision: string | null
           updated_at: string | null
@@ -142,9 +145,12 @@ export type Database = {
           model_agreement_score?: number | null
           primary_model_confidence?: number | null
           primary_model_decision?: string | null
+          processing_duration_ms?: number | null
           project_id?: string | null
           reference_id?: string | null
+          screening_end_time?: string | null
           screening_stage: Database["public"]["Enums"]["screening_stage"]
+          screening_start_time?: string | null
           secondary_model_confidence?: number | null
           secondary_model_decision?: string | null
           updated_at?: string | null
@@ -157,9 +163,12 @@ export type Database = {
           model_agreement_score?: number | null
           primary_model_confidence?: number | null
           primary_model_decision?: string | null
+          processing_duration_ms?: number | null
           project_id?: string | null
           reference_id?: string | null
+          screening_end_time?: string | null
           screening_stage?: Database["public"]["Enums"]["screening_stage"]
+          screening_start_time?: string | null
           secondary_model_confidence?: number | null
           secondary_model_decision?: string | null
           updated_at?: string | null
@@ -528,6 +537,122 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "review_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      screening_runs: {
+        Row: {
+          agreement_rate: number | null
+          completed_references: number | null
+          configuration: Json | null
+          created_at: string | null
+          criteria_snapshot: Json
+          end_time: string | null
+          id: string
+          project_id: string | null
+          run_name: string
+          start_time: string | null
+          status: string | null
+          total_references: number | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          agreement_rate?: number | null
+          completed_references?: number | null
+          configuration?: Json | null
+          created_at?: string | null
+          criteria_snapshot: Json
+          end_time?: string | null
+          id?: string
+          project_id?: string | null
+          run_name: string
+          start_time?: string | null
+          status?: string | null
+          total_references?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          agreement_rate?: number | null
+          completed_references?: number | null
+          configuration?: Json | null
+          created_at?: string | null
+          criteria_snapshot?: Json
+          end_time?: string | null
+          id?: string
+          project_id?: string | null
+          run_name?: string
+          start_time?: string | null
+          status?: string | null
+          total_references?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "screening_runs_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "review_projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_decisions: {
+        Row: {
+          confidence_level: number | null
+          created_at: string | null
+          decision_reason: string | null
+          id: string
+          notes: string | null
+          original_ai_decision: string | null
+          project_id: string | null
+          reference_id: string | null
+          updated_at: string | null
+          user_decision: string
+          user_id: string | null
+        }
+        Insert: {
+          confidence_level?: number | null
+          created_at?: string | null
+          decision_reason?: string | null
+          id?: string
+          notes?: string | null
+          original_ai_decision?: string | null
+          project_id?: string | null
+          reference_id?: string | null
+          updated_at?: string | null
+          user_decision: string
+          user_id?: string | null
+        }
+        Update: {
+          confidence_level?: number | null
+          created_at?: string | null
+          decision_reason?: string | null
+          id?: string
+          notes?: string | null
+          original_ai_decision?: string | null
+          project_id?: string | null
+          reference_id?: string | null
+          updated_at?: string | null
+          user_decision?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_decisions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "review_projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_decisions_reference_id_fkey"
+            columns: ["reference_id"]
+            isOneToOne: false
+            referencedRelation: "references"
             referencedColumns: ["id"]
           },
         ]
