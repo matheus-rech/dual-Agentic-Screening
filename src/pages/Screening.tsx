@@ -357,57 +357,59 @@ const ScreeningDashboard = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Ready to screen {references.length} references
-                </p>
-                {!criteriaData && (
-                  <div className="flex items-center gap-2 text-amber-600">
-                    <AlertCircle className="w-4 h-4" />
-                    <span className="text-sm">Define criteria before screening</span>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={() => navigate('/criteria')}
-                    >
-                      <Edit className="w-4 h-4 mr-2" />
-                      Define Criteria
-                    </Button>
-                  </div>
-                )}
-                {isScreening && (
-                  <div className="space-y-2">
-                    <Progress value={progress} className="w-[300px]" />
-                    <p className="text-sm text-muted-foreground">
-                      Progress: {Math.round(progress)}%
-                    </p>
-                  </div>
-                )}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Ready to screen {references.length} references
+                  </p>
+                  {!criteriaData && (
+                    <div className="flex items-center gap-2 text-amber-600">
+                      <AlertCircle className="w-4 h-4" />
+                      <span className="text-sm">Define criteria before screening</span>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => navigate('/criteria')}
+                      >
+                        <Edit className="w-4 h-4 mr-2" />
+                        Define Criteria
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                
+                <Button 
+                  onClick={startScreening}
+                  disabled={isScreening || references.length === 0 || !criteriaData}
+                  size="lg"
+                >
+                  {isScreening ? (
+                    <>
+                      <div className="animate-spin w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full" />
+                      Screening... ({screeningStats.percentage}%)
+                    </>
+                  ) : screeningResults.length > 0 ? (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Screening Complete
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4 mr-2" />
+                      Start AI Screening
+                    </>
+                  )}
+                </Button>
               </div>
-              
-              <Button 
-                onClick={startScreening}
-                disabled={isScreening || references.length === 0 || !criteriaData}
-                size="lg"
-              >
-                {isScreening ? (
-                  <>
-                    <div className="animate-spin w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full" />
-                    Screening... ({screeningStats.percentage}%)
-                  </>
-                ) : screeningResults.length > 0 ? (
-                  <>
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    Screening Complete
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4 mr-2" />
-                    Start AI Screening
-                  </>
-                )}
-              </Button>
+
+              {/* Live Progress Bar */}
+              <ScreeningProgress
+                isVisible={isScreening || screeningResults.length > 0}
+                stats={screeningStats}
+                currentReference={currentReference}
+                isComplete={!isScreening && screeningResults.length > 0}
+              />
             </div>
           </CardContent>
         </Card>
