@@ -354,13 +354,19 @@ const ScreeningDashboard = () => {
               
               <Button 
                 onClick={startScreening}
-                disabled={isScreening || references.length === 0 || !criteriaData}
+                disabled={isScreening || references.length === 0 || !criteriaData || autoStartAttempted}
                 size="lg"
+                className={autoStartAttempted ? "opacity-50" : ""}
               >
                 {isScreening ? (
                   <>
                     <Pause className="w-4 h-4 mr-2" />
                     Screening...
+                  </>
+                ) : autoStartAttempted ? (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Auto-screening Initiated
                   </>
                 ) : (
                   <>
