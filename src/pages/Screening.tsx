@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, CheckCircle, XCircle, AlertCircle, BarChart3, Filter, Download, Users, Edit, FileText, Database, Settings } from 'lucide-react';
+import { Play, CheckCircle, XCircle, AlertCircle, BarChart3, Filter, Download, Users, Edit, FileText, Database, Settings } from 'lucide-react';
 import Header from '@/components/Header';
 import ReferenceCard from '@/components/ReferenceCard';
 import CriteriaSummary from '@/components/CriteriaSummary';
@@ -7,6 +7,8 @@ import ScreeningLogs from '@/components/ScreeningLogs';
 import ScreeningAnalytics from '@/components/ScreeningAnalytics';
 import BulkReviewPanel from '@/components/BulkReviewPanel';
 import ExportPanel from '@/components/ExportPanel';
+import ScreeningProgress from '@/components/ScreeningProgress';
+import ReasoningDisplay from '@/components/ReasoningDisplay';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -28,7 +30,17 @@ const ScreeningDashboard = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [agreementFilter, setAgreementFilter] = useState('all');
   const [activeTab, setActiveTab] = useState('references');
-  const [autoStartAttempted, setAutoStartAttempted] = useState(false);
+  const [currentReference, setCurrentReference] = useState(null);
+  const [reasoningSteps, setReasoningSteps] = useState([]);
+  const [showReasoningDisplay, setShowReasoningDisplay] = useState(false);
+  const [screeningStats, setScreeningStats] = useState({
+    current: 0,
+    total: 0,
+    percentage: 0,
+    included: 0,
+    excluded: 0,
+    conflicts: 0
+  });
   const { toast } = useToast();
   const { projectData } = useProject();
   const navigate = useNavigate();
@@ -48,9 +60,7 @@ const ScreeningDashboard = () => {
   useEffect(() => {
     const shouldAutoStart = searchParams.get('autoStart') === 'true';
     
-    if (shouldAutoStart && !autoStartAttempted && selectedProject && criteriaData && references.length > 0 && !isScreening) {
-      setAutoStartAttempted(true);
-      
+    if (shouldAutoStart && selectedProject && criteriaData && references.length > 0 && !isScreening) {
       // Check if dual AI review is enabled
       if (selectedProject.dual_ai_review) {
         toast({
@@ -67,7 +77,7 @@ const ScreeningDashboard = () => {
         }, 1000);
       }
     }
-  }, [selectedProject, criteriaData, references, searchParams, autoStartAttempted, isScreening]);
+  }, [selectedProject, criteriaData, references, searchParams, isScreening]);
 
   const loadMostRecentProject = async () => {
     try {
@@ -161,71 +171,107 @@ const ScreeningDashboard = () => {
   };
 
   const startScreening = async () => {
-    if (!selectedProject) {
+    if (!criteriaData || references.length === 0) {
       toast({
-        title: "No Project Selected",
-        description: "Please select a project before starting screening.",
-        variant: "destructive"
+        title: "Cannot start screening",
+        description: "Please ensure criteria are set and references are loaded.",
+        variant: "destructive",
       });
       return;
     }
 
     setIsScreening(true);
     setProgress(0);
+    setScreeningResults([]);
+    setShowReasoningDisplay(true);
+    setReasoningSteps([]);
     
+    // Initialize stats
+    setScreeningStats({
+      current: 0,
+      total: references.length,
+      percentage: 0,
+      included: 0,
+      excluded: 0,
+      conflicts: 0
+    });
+
     try {
-      // Fetch detailed criteria from screening_criteria table
-      const { data: detailedCriteria, error: criteriaError } = await supabase
-        .from('screening_criteria')
-        .select('*')
-        .eq('project_id', selectedProject.id)
-        .single();
-
-      if (criteriaError && criteriaError.code !== 'PGRST116') {
-        throw criteriaError;
-      }
-
-      const criteria = {
-        population: detailedCriteria?.population || selectedProject.population,
-        intervention: detailedCriteria?.intervention || selectedProject.intervention,
-        comparator: detailedCriteria?.comparator || selectedProject.comparator,
-        outcome: detailedCriteria?.outcome || selectedProject.outcome,
-        studyDesigns: detailedCriteria?.study_designs || selectedProject.study_designs,
-        inclusionCriteria: detailedCriteria?.inclusion_criteria || [],
-        exclusionCriteria: detailedCriteria?.exclusion_criteria || [],
-        timeframeStart: detailedCriteria?.timeframe_start,
-        timeframeEnd: detailedCriteria?.timeframe_end,
-        timeframeDescription: detailedCriteria?.timeframe_description
-      };
+      const referencesToScreen = references.map(ref => ({
+        id: ref.id,
+        title: ref.title,
+        abstract: ref.abstract,
+        authors: ref.authors,
+        journal: ref.journal,
+        year: ref.year,
+        doi: ref.doi
+      }));
 
       const results = await DualLLMScreener.bulkScreenReferences(
-        references.map(ref => ({
-          id: ref.id,
-          title: ref.title || '',
-          abstract: ref.abstract || '',
-          authors: ref.authors || '',
-          journal: ref.journal,
-          year: ref.year,
-          doi: ref.doi
-        })),
-        criteria,
+        referencesToScreen,
+        criteriaData,
         selectedProject.id,
         (completed, total) => {
-          setProgress((completed / total) * 100);
+          const percentage = Math.round((completed / total) * 100);
+          setProgress(percentage);
+          
+          // Update current reference being processed
+          if (completed < referencesToScreen.length) {
+            setCurrentReference({
+              id: referencesToScreen[completed].id,
+              title: referencesToScreen[completed].title,
+              authors: referencesToScreen[completed].authors
+            });
+          }
+          
+          // Update stats
+          const processedResults = results.slice(0, completed);
+          const included = processedResults.filter(r => r.finalDecision === 'include').length;
+          const excluded = processedResults.filter(r => r.finalDecision === 'exclude').length;
+          const conflicts = processedResults.filter(r => !r.agreement).length;
+          
+          setScreeningStats({
+            current: completed,
+            total,
+            percentage,
+            included,
+            excluded,
+            conflicts
+          });
         }
       );
 
       setScreeningResults(results);
+      setCurrentReference(null);
       
-      toast({
-        title: "Screening Complete!",
-        description: `Processed ${results.length} references with ${(DualLLMScreener.getAgreementRate(results) * 100).toFixed(1)}% AI agreement rate.`
+      // Final stats update
+      const included = results.filter(r => r.finalDecision === 'include').length;
+      const excluded = results.filter(r => r.finalDecision === 'exclude').length;
+      const conflicts = results.filter(r => !r.agreement).length;
+      
+      setScreeningStats({
+        current: results.length,
+        total: results.length,
+        percentage: 100,
+        included,
+        excluded,
+        conflicts
       });
+      
+      // Reload references to get updated status
+      loadReferences();
+
+      toast({
+        title: "Screening Complete",
+        description: `Processed ${results.length} references. Agreement rate: ${Math.round(DualLLMScreener.getAgreementRate(results) * 100)}%`,
+      });
+
     } catch (error) {
+      console.error('Error during screening:', error);
       toast({
         title: "Screening Error",
-        description: "An error occurred during screening. Please try again.",
-        variant: "destructive"
+        description: error.message || "An error occurred during screening",
+        variant: "destructive",
       });
     } finally {
       setIsScreening(false);
@@ -354,24 +400,23 @@ const ScreeningDashboard = () => {
               
               <Button 
                 onClick={startScreening}
-                disabled={isScreening || references.length === 0 || !criteriaData || autoStartAttempted}
+                disabled={isScreening || references.length === 0 || !criteriaData}
                 size="lg"
-                className={autoStartAttempted ? "opacity-50" : ""}
               >
                 {isScreening ? (
                   <>
-                    <Pause className="w-4 h-4 mr-2" />
-                    Screening...
+                    <div className="animate-spin w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full" />
+                    Screening... ({screeningStats.percentage}%)
                   </>
-                ) : autoStartAttempted ? (
+                ) : screeningResults.length > 0 ? (
                   <>
                     <CheckCircle className="w-4 h-4 mr-2" />
-                    Auto-screening Initiated
+                    Screening Complete
                   </>
                 ) : (
                   <>
                     <Play className="w-4 h-4 mr-2" />
-                    Start Dual AI Screening
+                    Start AI Screening
                   </>
                 )}
               </Button>
@@ -445,16 +490,40 @@ const ScreeningDashboard = () => {
           ))}
         </div>
 
+        {/* Progress Display */}
+        {(isScreening || screeningResults.length > 0) && (
+          <div className="mb-6">
+            <ScreeningProgress
+              isVisible={true}
+              stats={screeningStats}
+              currentReference={currentReference}
+              isComplete={!isScreening && screeningResults.length > 0}
+            />
+          </div>
+        )}
+
+        {/* Live Reasoning Display */}
+        {showReasoningDisplay && (
+          <div className="mb-6">
+            <ReasoningDisplay
+              isVisible={showReasoningDisplay}
+              currentReference={currentReference}
+              reasoningSteps={reasoningSteps}
+              progress={screeningStats}
+            />
+          </div>
+        )}
+
         {/* Tab Content */}
         {activeTab === 'references' && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="w-5 h-5" />
-                References ({filteredReferences.length} of {references.length})
-              </CardTitle>
-            </CardHeader>
-          <CardContent>
+           <Card>
+             <CardHeader>
+               <CardTitle className="flex items-center gap-2">
+                 <FileText className="w-5 h-5" />
+                 References ({filteredReferences.length} of {references.length})
+               </CardTitle>
+             </CardHeader>
+           <CardContent>
             <div className="flex flex-col sm:flex-row gap-4 mb-6">
               <div className="flex items-center gap-2">
                 <Filter className="w-4 h-4 text-muted-foreground" />
