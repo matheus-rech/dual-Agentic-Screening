@@ -1,12 +1,18 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import Header from "@/components/Header";
+import DemoCard from "@/components/DemoCard";
+import ImportSection from "@/components/ImportSection";
 
 const Index = () => {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
+    <div className="min-h-screen bg-background">
+      <Header />
+      
+      <main className="max-w-4xl mx-auto px-6 py-8">
+        <div className="space-y-8">
+          <DemoCard />
+          <ImportSection />
+        </div>
+      </main>
     </div>
   );
 };
