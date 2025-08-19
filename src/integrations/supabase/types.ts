@@ -702,6 +702,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      check_admin_rate_limit_enhanced: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       create_embeddings_column_function: {
         Args: Record<PropertyKey, never>
         Returns: undefined
