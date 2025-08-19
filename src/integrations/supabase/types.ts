@@ -698,6 +698,10 @@ export type Database = {
         Args: { profile_user_id: string }
         Returns: boolean
       }
+      check_admin_rate_limit: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
       create_embeddings_column_function: {
         Args: Record<PropertyKey, never>
         Returns: undefined
@@ -736,6 +740,10 @@ export type Database = {
           id: string
           updated_at: string
         }[]
+      }
+      get_user_count: {
+        Args: Record<PropertyKey, never>
+        Returns: number
       }
       get_users_for_admin: {
         Args: Record<PropertyKey, never>
