@@ -415,6 +415,7 @@ export type Database = {
           created_at: string | null
           criteria: Json | null
           description: string | null
+          dual_ai_review: boolean | null
           id: string
           intervention: string | null
           name: string
@@ -436,6 +437,7 @@ export type Database = {
           created_at?: string | null
           criteria?: Json | null
           description?: string | null
+          dual_ai_review?: boolean | null
           id?: string
           intervention?: string | null
           name: string
@@ -457,6 +459,7 @@ export type Database = {
           created_at?: string | null
           criteria?: Json | null
           description?: string | null
+          dual_ai_review?: boolean | null
           id?: string
           intervention?: string | null
           name?: string
