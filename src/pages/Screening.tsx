@@ -398,13 +398,6 @@ const ScreeningDashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Live Progress Display */}
-        <ScreeningProgress
-          isVisible={isScreening || screeningResults.length > 0}
-          stats={progress.stats}
-          currentReference={progress.currentReference}
-          isComplete={progress.isComplete}
-        />
 
         {/* Live Reasoning Display */}
         <ReasoningDisplay 
