@@ -71,8 +71,44 @@ const Criteria = () => {
       });
       navigate('/');
       return;
+    } else {
+      // Load existing criteria if available
+      loadExistingCriteria();
     }
   }, [projectData.id, navigate, toast]);
+
+  const loadExistingCriteria = async () => {
+    try {
+      const { data: criteria, error } = await supabase
+        .from('screening_criteria')
+        .select('*')
+        .eq('project_id', projectData.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      if (criteria) {
+        setCriteriaData({
+          population: criteria.population || '',
+          intervention: criteria.intervention || '',
+          comparator: criteria.comparator || '',
+          outcome: criteria.outcome || '',
+          timeframe_start: criteria.timeframe_start || '',
+          timeframe_end: criteria.timeframe_end || '',
+          timeframe_description: criteria.timeframe_description || '',
+          study_designs: Array.isArray(criteria.study_designs) ? criteria.study_designs.map(s => String(s)) : [],
+          inclusion_criteria: Array.isArray(criteria.inclusion_criteria) ? criteria.inclusion_criteria.map(s => String(s)) : [''],
+          exclusion_criteria: Array.isArray(criteria.exclusion_criteria) ? criteria.exclusion_criteria.map(s => String(s)) : [''],
+          use_advanced_ai: false,
+          dual_ai_review: true
+        });
+      }
+    } catch (error) {
+      console.error('Error loading existing criteria:', error);
+    }
+  };
 
   const handleInputChange = (field: keyof PICOTTData, value: any) => {
     setCriteriaData(prev => ({ ...prev, [field]: value }));

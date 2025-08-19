@@ -37,8 +37,8 @@ const DemoCard = () => {
         description: `Created project with ${result.referencesCount} research references about ICP monitoring in TBI`,
       });
 
-      // Navigate to screening page since criteria are already defined
-      navigate('/screening');
+      // Navigate to criteria page to review/modify criteria before screening
+      navigate('/criteria');
 
     } catch (error) {
       console.error('Error loading demo data:', error);

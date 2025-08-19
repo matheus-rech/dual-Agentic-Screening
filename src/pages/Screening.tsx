@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, CheckCircle, XCircle, AlertCircle, BarChart3, Filter, Download, Users } from 'lucide-react';
+import { Play, Pause, CheckCircle, XCircle, AlertCircle, BarChart3, Filter, Download, Users, Edit } from 'lucide-react';
 import Header from '@/components/Header';
 import ReferenceCard from '@/components/ReferenceCard';
+import CriteriaSummary from '@/components/CriteriaSummary';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { DualLLMScreener } from '@/services/aiScreeningService';
 import { useProject } from '@/contexts/ProjectContext';
+import { useNavigate } from 'react-router-dom';
 
 const ScreeningDashboard = () => {
   const [references, setReferences] = useState([]);
@@ -18,10 +20,12 @@ const ScreeningDashboard = () => {
   const [isScreening, setIsScreening] = useState(false);
   const [progress, setProgress] = useState(0);
   const [selectedProject, setSelectedProject] = useState(null);
+  const [criteriaData, setCriteriaData] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [agreementFilter, setAgreementFilter] = useState('all');
   const { toast } = useToast();
   const { projectData } = useProject();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (projectData?.id) {
@@ -69,8 +73,31 @@ const ScreeningDashboard = () => {
 
       if (error) throw error;
       setSelectedProject(data);
+      
+      // Load criteria data
+      await loadCriteriaData(projectId);
     } catch (error) {
       console.error('Error loading project:', error);
+    }
+  };
+
+  const loadCriteriaData = async (projectId: string) => {
+    try {
+      const { data: criteria, error } = await supabase
+        .from('screening_criteria')
+        .select('*')
+        .eq('project_id', projectId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        throw error;
+      }
+
+      if (criteria) {
+        setCriteriaData(criteria);
+      }
+    } catch (error) {
+      console.error('Error loading criteria:', error);
     }
   };
 
@@ -115,12 +142,28 @@ const ScreeningDashboard = () => {
     setProgress(0);
     
     try {
+      // Fetch detailed criteria from screening_criteria table
+      const { data: detailedCriteria, error: criteriaError } = await supabase
+        .from('screening_criteria')
+        .select('*')
+        .eq('project_id', selectedProject.id)
+        .single();
+
+      if (criteriaError && criteriaError.code !== 'PGRST116') {
+        throw criteriaError;
+      }
+
       const criteria = {
-        population: selectedProject.population,
-        intervention: selectedProject.intervention,
-        comparator: selectedProject.comparator,
-        outcome: selectedProject.outcome,
-        studyDesigns: selectedProject.study_designs
+        population: detailedCriteria?.population || selectedProject.population,
+        intervention: detailedCriteria?.intervention || selectedProject.intervention,
+        comparator: detailedCriteria?.comparator || selectedProject.comparator,
+        outcome: detailedCriteria?.outcome || selectedProject.outcome,
+        studyDesigns: detailedCriteria?.study_designs || selectedProject.study_designs,
+        inclusionCriteria: detailedCriteria?.inclusion_criteria || [],
+        exclusionCriteria: detailedCriteria?.exclusion_criteria || [],
+        timeframeStart: detailedCriteria?.timeframe_start,
+        timeframeEnd: detailedCriteria?.timeframe_end,
+        timeframeDescription: detailedCriteria?.timeframe_description
       };
 
       const results = await DualLLMScreener.bulkScreenReferences(
@@ -229,6 +272,16 @@ const ScreeningDashboard = () => {
           </p>
         </div>
 
+        {/* Criteria Summary */}
+        {criteriaData && (
+          <div className="mb-8">
+            <CriteriaSummary 
+              criteria={criteriaData} 
+              onEdit={() => navigate('/criteria')}
+            />
+          </div>
+        )}
+
         {/* Screening Controls */}
         <Card className="mb-8">
           <CardHeader>
@@ -243,6 +296,20 @@ const ScreeningDashboard = () => {
                 <p className="text-sm text-muted-foreground">
                   Ready to screen {references.length} references
                 </p>
+                {!criteriaData && (
+                  <div className="flex items-center gap-2 text-amber-600">
+                    <AlertCircle className="w-4 h-4" />
+                    <span className="text-sm">Define criteria before screening</span>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => navigate('/criteria')}
+                    >
+                      <Edit className="w-4 h-4 mr-2" />
+                      Define Criteria
+                    </Button>
+                  </div>
+                )}
                 {isScreening && (
                   <div className="space-y-2">
                     <Progress value={progress} className="w-[300px]" />
@@ -255,7 +322,7 @@ const ScreeningDashboard = () => {
               
               <Button 
                 onClick={startScreening}
-                disabled={isScreening || references.length === 0}
+                disabled={isScreening || references.length === 0 || !criteriaData}
                 size="lg"
               >
                 {isScreening ? (

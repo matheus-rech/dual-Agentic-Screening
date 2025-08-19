@@ -1,0 +1,164 @@
+import React from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Edit, Users, Target, FlaskConical, Calendar } from 'lucide-react';
+
+interface CriteriaSummaryProps {
+  criteria: {
+    population?: string;
+    intervention?: string;
+    comparator?: string;
+    outcome?: string;
+    study_designs?: string[];
+    timeframe_start?: string;
+    timeframe_end?: string;
+    timeframe_description?: string;
+    inclusion_criteria?: string[];
+    exclusion_criteria?: string[];
+  };
+  onEdit?: () => void;
+}
+
+const CriteriaSummary: React.FC<CriteriaSummaryProps> = ({ criteria, onEdit }) => {
+  const hasTimeframe = criteria.timeframe_start || criteria.timeframe_end || criteria.timeframe_description;
+  const hasInclusionCriteria = criteria.inclusion_criteria?.filter(c => c.trim()).length > 0;
+  const hasExclusionCriteria = criteria.exclusion_criteria?.filter(c => c.trim()).length > 0;
+
+  return (
+    <Card className="bg-muted/50">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Target className="w-5 h-5" />
+            Screening Criteria Summary
+          </CardTitle>
+          {onEdit && (
+            <Button variant="outline" size="sm" onClick={onEdit}>
+              <Edit className="w-4 h-4 mr-2" />
+              Edit Criteria
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* PICO Elements */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Users className="w-4 h-4 text-primary" />
+              <span className="font-medium text-sm">Population</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {criteria.population || 'Not specified'}
+            </p>
+          </div>
+          
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <FlaskConical className="w-4 h-4 text-primary" />
+              <span className="font-medium text-sm">Intervention</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {criteria.intervention || 'Not specified'}
+            </p>
+          </div>
+          
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Target className="w-4 h-4 text-primary" />
+              <span className="font-medium text-sm">Comparator</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {criteria.comparator || 'Not specified'}
+            </p>
+          </div>
+          
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Target className="w-4 h-4 text-primary" />
+              <span className="font-medium text-sm">Outcome</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {criteria.outcome || 'Not specified'}
+            </p>
+          </div>
+        </div>
+
+        {/* Timeframe */}
+        {hasTimeframe && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <Calendar className="w-4 h-4 text-primary" />
+              <span className="font-medium text-sm">Timeframe</span>
+            </div>
+            <div className="text-sm text-muted-foreground space-y-1">
+              {(criteria.timeframe_start || criteria.timeframe_end) && (
+                <p>
+                  Period: {criteria.timeframe_start || 'Not specified'} to {criteria.timeframe_end || 'Present'}
+                </p>
+              )}
+              {criteria.timeframe_description && (
+                <p>{criteria.timeframe_description}</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Study Designs */}
+        {criteria.study_designs && criteria.study_designs.length > 0 && (
+          <div>
+            <span className="font-medium text-sm">Study Designs:</span>
+            <div className="flex flex-wrap gap-1 mt-2">
+              {criteria.study_designs.map((design) => (
+                <Badge key={design} variant="secondary" className="text-xs">
+                  {design}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Inclusion Criteria */}
+        {hasInclusionCriteria && (
+          <div>
+            <span className="font-medium text-sm text-green-700 dark:text-green-400">
+              Inclusion Criteria:
+            </span>
+            <ul className="text-sm text-muted-foreground mt-1 space-y-1">
+              {criteria.inclusion_criteria
+                ?.filter(c => c.trim())
+                .map((criterion, index) => (
+                  <li key={index} className="flex items-start gap-2">
+                    <span className="text-green-600 mt-0.5">•</span>
+                    <span>{criterion}</span>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Exclusion Criteria */}
+        {hasExclusionCriteria && (
+          <div>
+            <span className="font-medium text-sm text-red-700 dark:text-red-400">
+              Exclusion Criteria:
+            </span>
+            <ul className="text-sm text-muted-foreground mt-1 space-y-1">
+              {criteria.exclusion_criteria
+                ?.filter(c => c.trim())
+                .map((criterion, index) => (
+                  <li key={index} className="flex items-start gap-2">
+                    <span className="text-red-600 mt-0.5">•</span>
+                    <span>{criterion}</span>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+export default CriteriaSummary;

@@ -66,6 +66,14 @@ Intervention: ${criteria.intervention || 'Not specified'}
 Comparator: ${criteria.comparator || 'Not specified'}
 Outcome: ${criteria.outcome || 'Not specified'}
 Study Designs: ${criteria.studyDesigns?.join(', ') || 'Not specified'}
+${criteria.timeframeStart && criteria.timeframeEnd ? `Timeframe: ${criteria.timeframeStart} to ${criteria.timeframeEnd}` : ''}
+${criteria.timeframeDescription ? `Timeframe Details: ${criteria.timeframeDescription}` : ''}
+
+SPECIFIC INCLUSION CRITERIA:
+${criteria.inclusionCriteria?.filter(c => c.trim()).join('\n• ') || 'Not specified'}
+
+SPECIFIC EXCLUSION CRITERIA:
+${criteria.exclusionCriteria?.filter(c => c.trim()).join('\n• ') || 'Not specified'}
 
 Provide your response in this exact JSON format:
 {
