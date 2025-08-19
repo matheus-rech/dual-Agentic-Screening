@@ -43,7 +43,8 @@ export class StreamingDualLLMScreener {
     
     try {
       // Connect to the streaming edge function via WebSocket
-      const wsUrl = `wss://jloyjcanvtolhgodeupf.functions.supabase.co/ai-screening-stream`;
+      // Note: Supabase edge functions use /functions/v1/ for WebSocket connections too
+      const wsUrl = `wss://jloyjcanvtolhgodeupf.supabase.co/functions/v1/ai-screening-stream`;
       console.log('Connecting to WebSocket:', wsUrl);
       
       this.ws = new WebSocket(wsUrl);
@@ -98,14 +99,21 @@ export class StreamingDualLLMScreener {
       };
 
       this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        this.callbacks.onError?.('Connection error occurred');
+        console.error('WebSocket error details:', error);
+        console.error('WebSocket error type:', error.type);
+        console.error('WebSocket readyState:', this.ws?.readyState);
+        this.callbacks.onError?.('Connection error occurred - please check if edge function is deployed');
       };
 
       this.ws.onclose = (event) => {
         console.log('WebSocket closed:', event.code, event.reason);
+        console.log('Close event details:', {
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean
+        });
         if (event.code !== 1000) { // Not a normal closure
-          this.callbacks.onError?.('Connection lost unexpectedly');
+          this.callbacks.onError?.(`Connection lost unexpectedly (code: ${event.code})`);
         }
       };
 

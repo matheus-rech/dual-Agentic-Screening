@@ -7,13 +7,17 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  console.log('Edge function called, checking for WebSocket upgrade...');
   const { headers } = req;
   const upgradeHeader = headers.get("upgrade") || "";
+  console.log('Upgrade header:', upgradeHeader);
 
   if (upgradeHeader.toLowerCase() !== "websocket") {
+    console.log('Not a WebSocket request, returning 400');
     return new Response("Expected WebSocket connection", { status: 400 });
   }
 
+  console.log('Upgrading to WebSocket...');
   const { socket, response } = Deno.upgradeWebSocket(req);
   
   socket.onopen = () => {
