@@ -686,6 +686,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assign_first_user_as_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       binary_quantize: {
         Args: { "": string } | { "": unknown }
         Returns: unknown
