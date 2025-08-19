@@ -48,9 +48,9 @@ const RoleManagement = () => {
 
   const loadUserRoles = async () => {
     try {
-      // Use the secure admin function to get users with roles
+      // Use the safer function that doesn't expose emails in plain text
       const { data: usersData, error: usersError } = await supabase
-        .rpc('get_users_for_admin');
+        .rpc('get_users_for_admin_safe');
 
       if (usersError) {
         if (usersError.message.includes('Access denied')) {
@@ -70,7 +70,7 @@ const RoleManagement = () => {
               role: role as 'admin' | 'researcher' | 'user',
               created_at: user.created_at,
               profiles: {
-                email: user.email,
+                email: user.email_hash, // This is now a hash for security
                 full_name: user.full_name || 'Unknown User'
               }
             }))
@@ -80,7 +80,7 @@ const RoleManagement = () => {
               role: 'user' as 'admin' | 'researcher' | 'user',
               created_at: user.created_at,
               profiles: {
-                email: user.email,
+                email: user.email_hash, // This is now a hash for security
                 full_name: user.full_name || 'Unknown User'
               }
             }]
@@ -301,7 +301,11 @@ const RoleManagement = () => {
                         {userRole.profiles?.full_name || userRole.profiles?.email || 'Unknown User'}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        {userRole.profiles?.email}
+                        {userRole.profiles?.email?.includes('...') ? 
+                          `Hash: ${userRole.profiles.email.substring(0, 8)}...` : 
+                          userRole.profiles?.email
+                        } 
+                        <span className="text-xs text-yellow-600 ml-1">(protected)</span>
                       </div>
                     </div>
                     {getRoleBadge(userRole.role)}
