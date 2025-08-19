@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { DualLLMScreener } from '@/services/aiScreeningService';
+import { StreamingDualLLMScreener, ReasoningStep, ProgressUpdate } from '@/services/streamingScreeningService';
 import { useProject } from '@/contexts/ProjectContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -185,6 +186,7 @@ const ScreeningDashboard = () => {
     setScreeningResults([]);
     setShowReasoningDisplay(true);
     setReasoningSteps([]);
+    setCurrentReference(null);
     
     // Initialize stats
     setScreeningStats({
@@ -196,6 +198,10 @@ const ScreeningDashboard = () => {
       conflicts: 0
     });
 
+    console.log('Starting streaming AI screening...');
+
+    const streamer = new StreamingDualLLMScreener();
+    
     try {
       const referencesToScreen = references.map(ref => ({
         id: ref.id,
@@ -207,74 +213,56 @@ const ScreeningDashboard = () => {
         doi: ref.doi
       }));
 
-      const results = await DualLLMScreener.bulkScreenReferences(
+      await streamer.startStreaming(
         referencesToScreen,
         criteriaData,
         selectedProject.id,
-        (completed, total) => {
-          const percentage = Math.round((completed / total) * 100);
-          setProgress(percentage);
-          
-          // Update current reference being processed
-          if (completed < referencesToScreen.length) {
-            setCurrentReference({
-              id: referencesToScreen[completed].id,
-              title: referencesToScreen[completed].title,
-              authors: referencesToScreen[completed].authors
+        {
+          onProgress: (progressUpdate: ProgressUpdate) => {
+            console.log('Progress update:', progressUpdate);
+            setProgress(progressUpdate.percentage);
+            setCurrentReference(progressUpdate.currentReference);
+            setScreeningStats(prev => ({
+              ...prev,
+              current: progressUpdate.current,
+              percentage: progressUpdate.percentage
+            }));
+          },
+          onReasoningStep: (step: ReasoningStep) => {
+            console.log('New reasoning step:', step);
+            setReasoningSteps(prev => [...prev, step]);
+          },
+          onComplete: () => {
+            console.log('Screening completed successfully');
+            setIsScreening(false);
+            setCurrentReference(null);
+            loadReferences(); // Reload to get updated results
+            toast({
+              title: "Screening Complete",
+              description: `Processed ${references.length} references successfully.`,
+            });
+          },
+          onError: (error: string) => {
+            console.error('Streaming error:', error);
+            setIsScreening(false);
+            setCurrentReference(null);
+            toast({
+              title: "Screening Failed",
+              description: error,
+              variant: "destructive",
             });
           }
-          
-          // Update stats
-          const processedResults = results.slice(0, completed);
-          const included = processedResults.filter(r => r.finalDecision === 'include').length;
-          const excluded = processedResults.filter(r => r.finalDecision === 'exclude').length;
-          const conflicts = processedResults.filter(r => !r.agreement).length;
-          
-          setScreeningStats({
-            current: completed,
-            total,
-            percentage,
-            included,
-            excluded,
-            conflicts
-          });
         }
       );
-
-      setScreeningResults(results);
-      setCurrentReference(null);
-      
-      // Final stats update
-      const included = results.filter(r => r.finalDecision === 'include').length;
-      const excluded = results.filter(r => r.finalDecision === 'exclude').length;
-      const conflicts = results.filter(r => !r.agreement).length;
-      
-      setScreeningStats({
-        current: results.length,
-        total: results.length,
-        percentage: 100,
-        included,
-        excluded,
-        conflicts
-      });
-      
-      // Reload references to get updated status
-      loadReferences();
-
-      toast({
-        title: "Screening Complete",
-        description: `Processed ${results.length} references. Agreement rate: ${Math.round(DualLLMScreener.getAgreementRate(results) * 100)}%`,
-      });
-
     } catch (error) {
-      console.error('Error during screening:', error);
+      console.error('Failed to start streaming:', error);
+      setIsScreening(false);
+      setCurrentReference(null);
       toast({
-        title: "Screening Error",
-        description: error.message || "An error occurred during screening",
+        title: "Connection Failed",
+        description: "Could not connect to AI screening service. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setIsScreening(false);
     }
   };
 
