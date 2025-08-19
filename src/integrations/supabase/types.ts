@@ -383,6 +383,9 @@ export type Database = {
           population: string | null
           status: string | null
           study_designs: string[] | null
+          timeframe_description: string | null
+          timeframe_end: string | null
+          timeframe_start: string | null
           total_references: number | null
           updated_at: string | null
           use_advanced_ai: boolean | null
@@ -401,6 +404,9 @@ export type Database = {
           population?: string | null
           status?: string | null
           study_designs?: string[] | null
+          timeframe_description?: string | null
+          timeframe_end?: string | null
+          timeframe_start?: string | null
           total_references?: number | null
           updated_at?: string | null
           use_advanced_ai?: boolean | null
@@ -419,6 +425,9 @@ export type Database = {
           population?: string | null
           status?: string | null
           study_designs?: string[] | null
+          timeframe_description?: string | null
+          timeframe_end?: string | null
+          timeframe_start?: string | null
           total_references?: number | null
           updated_at?: string | null
           use_advanced_ai?: boolean | null
@@ -446,6 +455,9 @@ export type Database = {
           population: string | null
           project_id: string | null
           study_designs: string[] | null
+          timeframe_description: string | null
+          timeframe_end: string | null
+          timeframe_start: string | null
           updated_at: string | null
         }
         Insert: {
@@ -459,6 +471,9 @@ export type Database = {
           population?: string | null
           project_id?: string | null
           study_designs?: string[] | null
+          timeframe_description?: string | null
+          timeframe_end?: string | null
+          timeframe_start?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -472,6 +487,9 @@ export type Database = {
           population?: string | null
           project_id?: string | null
           study_designs?: string[] | null
+          timeframe_description?: string | null
+          timeframe_end?: string | null
+          timeframe_start?: string | null
           updated_at?: string | null
         }
         Relationships: [
