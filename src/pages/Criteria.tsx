@@ -195,6 +195,7 @@ const Criteria = () => {
           timeframe_description: criteriaData.timeframe_description,
           study_designs: criteriaData.study_designs,
           use_advanced_ai: criteriaData.use_advanced_ai,
+          dual_ai_review: criteriaData.dual_ai_review,
           status: 'criteria_defined'
         })
         .eq('id', projectData.id);
@@ -222,11 +223,14 @@ const Criteria = () => {
 
       toast({
         title: "Criteria saved successfully",
-        description: "Your screening criteria have been saved and you can now start the screening process",
+        description: criteriaData.dual_ai_review 
+          ? "Your screening criteria have been saved. Starting dual AI screening..."
+          : "Your screening criteria have been saved and you can now start the screening process",
       });
 
-      // Navigate to screening page
-      navigate('/screening');
+      // Navigate to screening page with auto-start flag if dual AI review is enabled
+      const searchParams = criteriaData.dual_ai_review ? '?autoStart=true' : '';
+      navigate(`/screening${searchParams}`);
 
     } catch (error) {
       console.error('Error saving criteria:', error);

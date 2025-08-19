@@ -16,7 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { DualLLMScreener } from '@/services/aiScreeningService';
 import { useProject } from '@/contexts/ProjectContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 const ScreeningDashboard = () => {
   const [references, setReferences] = useState([]);
@@ -28,9 +28,11 @@ const ScreeningDashboard = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [agreementFilter, setAgreementFilter] = useState('all');
   const [activeTab, setActiveTab] = useState('references');
+  const [autoStartAttempted, setAutoStartAttempted] = useState(false);
   const { toast } = useToast();
   const { projectData } = useProject();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     if (projectData?.id) {
@@ -41,6 +43,31 @@ const ScreeningDashboard = () => {
       loadMostRecentProject();
     }
   }, [projectData]);
+
+  // Auto-start screening if the autoStart flag is present and conditions are met
+  useEffect(() => {
+    const shouldAutoStart = searchParams.get('autoStart') === 'true';
+    
+    if (shouldAutoStart && !autoStartAttempted && selectedProject && criteriaData && references.length > 0 && !isScreening) {
+      setAutoStartAttempted(true);
+      
+      // Check if dual AI review is enabled
+      if (selectedProject.dual_ai_review) {
+        toast({
+          title: "Auto-starting dual AI screening",
+          description: "Dual AI review is enabled. Starting screening process automatically...",
+        });
+        
+        // Clear the autoStart parameter from URL
+        setSearchParams({});
+        
+        // Start screening after a short delay to allow UI to update
+        setTimeout(() => {
+          startScreening();
+        }, 1000);
+      }
+    }
+  }, [selectedProject, criteriaData, references, searchParams, autoStartAttempted, isScreening]);
 
   const loadMostRecentProject = async () => {
     try {
