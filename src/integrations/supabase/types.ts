@@ -181,6 +181,36 @@ export type Database = {
           },
         ]
       }
+      audit_log: {
+        Row: {
+          changed_at: string | null
+          id: string
+          new_data: Json | null
+          old_data: Json | null
+          operation: string
+          table_name: string
+          user_id: string | null
+        }
+        Insert: {
+          changed_at?: string | null
+          id?: string
+          new_data?: Json | null
+          old_data?: Json | null
+          operation: string
+          table_name: string
+          user_id?: string | null
+        }
+        Update: {
+          changed_at?: string | null
+          id?: string
+          new_data?: Json | null
+          old_data?: Json | null
+          operation?: string
+          table_name?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       paper_references: {
         Row: {
           created_at: string | null
@@ -511,6 +541,10 @@ export type Database = {
         Args: { "": string } | { "": unknown }
         Returns: unknown
       }
+      can_access_profile: {
+        Args: { profile_user_id: string }
+        Returns: boolean
+      }
       create_embeddings_column_function: {
         Args: Record<PropertyKey, never>
         Returns: undefined
@@ -526,6 +560,16 @@ export type Database = {
           agreement_score: number
           conflict_flag: boolean
           final_decision: string
+        }[]
+      }
+      get_current_user_profile: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          updated_at: string
         }[]
       }
       halfvec_avg: {
