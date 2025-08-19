@@ -10,6 +10,7 @@ import { useNavigate } from "react-router-dom";
 import { useProject } from "@/contexts/ProjectContext";
 import { FileParserService } from "@/services/fileParserService";
 import { supabase } from "@/integrations/supabase/client";
+import { validateFile, sanitizeTextInput } from "@/lib/security";
 
 const ImportSection = () => {
   const [projectName, setProjectName] = useState("");
@@ -23,6 +24,20 @@ const ImportSection = () => {
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+      // Enhanced security validation
+      const validation = validateFile(file, 'documents');
+      
+      if (!validation.isValid) {
+        toast({
+          title: "File validation failed",
+          description: validation.errors.join('. '),
+          variant: "destructive",
+        });
+        // Clear the input
+        event.target.value = '';
+        return;
+      }
+
       setUploadedFile(file);
       toast({
         title: "File uploaded",
@@ -32,10 +47,12 @@ const ImportSection = () => {
   };
 
   const handleSubmit = async () => {
-    if (!projectName.trim()) {
+    const sanitizedProjectName = sanitizeTextInput(projectName);
+    
+    if (!sanitizedProjectName.trim()) {
       toast({
         title: "Project name required",
-        description: "Please enter a project name to continue",
+        description: "Please enter a valid project name to continue",
         variant: "destructive",
       });
       return;
@@ -66,11 +83,11 @@ const ImportSection = () => {
         return;
       }
 
-      // Create project in database
+      // Create project in database with sanitized input
       const { data: project, error: projectError } = await supabase
         .from('review_projects')
         .insert({
-          name: projectName.trim(),
+          name: sanitizedProjectName,
           status: 'draft'
         })
         .select()
@@ -109,7 +126,7 @@ const ImportSection = () => {
       // Update project context
       setProjectData({
         id: project.id,
-        name: projectName,
+        name: sanitizedProjectName,
         importFormat,
         uploadedFile,
         references
@@ -154,6 +171,7 @@ const ImportSection = () => {
             className="mt-1"
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
+            maxLength={255}
           />
         </div>
         
@@ -183,7 +201,7 @@ const ImportSection = () => {
             <Input
               id="file-upload"
               type="file"
-              accept=".bib,.ris,.txt,.enw,.nbib"
+              accept=".bib,.ris,.txt,.enw,.nbib,.pdf,.doc,.docx,.json,.csv"
               onChange={handleFileUpload}
               className="file:text-primary file:border-primary/20"
             />
@@ -202,7 +220,7 @@ const ImportSection = () => {
         <div className="pt-4">
           <Button 
             onClick={handleSubmit}
-            disabled={isLoading || !projectName.trim() || !uploadedFile}
+            disabled={isLoading || !sanitizeTextInput(projectName).trim() || !uploadedFile}
             className="w-full"
             size="lg"
           >
