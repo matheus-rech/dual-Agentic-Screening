@@ -61,9 +61,19 @@ const ScreeningDashboard = () => {
   useEffect(() => {
     const shouldAutoStart = searchParams.get('autoStart') === 'true';
     
+    console.log('Auto-start check:', {
+      shouldAutoStart,
+      selectedProject: !!selectedProject,
+      criteriaData: !!criteriaData,
+      referencesLength: references.length,
+      isScreening,
+      dualAiReview: selectedProject?.dual_ai_review
+    });
+    
     if (shouldAutoStart && selectedProject && criteriaData && references.length > 0 && !isScreening) {
       // Check if dual AI review is enabled
       if (selectedProject.dual_ai_review) {
+        console.log('Auto-starting screening...');
         toast({
           title: "Auto-starting dual AI screening",
           description: "Dual AI review is enabled. Starting screening process automatically...",
@@ -76,7 +86,11 @@ const ScreeningDashboard = () => {
         setTimeout(() => {
           startScreening();
         }, 1000);
+      } else {
+        console.log('Dual AI review not enabled, skipping auto-start');
       }
+    } else {
+      console.log('Auto-start conditions not met');
     }
   }, [selectedProject, criteriaData, references, searchParams, isScreening]);
 
@@ -117,8 +131,22 @@ const ScreeningDashboard = () => {
       if (error) throw error;
       setSelectedProject(data);
       
-      // Load criteria data
-      await loadCriteriaData(projectId);
+      // Check if criteria are embedded in the project or load from separate table
+      if (data.population || data.intervention || data.outcome || data.comparator) {
+        // Use embedded criteria from project
+        const embeddedCriteria = {
+          population: data.population,
+          intervention: data.intervention,
+          comparator: data.comparator,
+          outcome: data.outcome,
+          studyDesigns: data.study_designs || []
+        };
+        console.log('Using embedded criteria:', embeddedCriteria);
+        setCriteriaData(embeddedCriteria);
+      } else {
+        // Load criteria from separate table
+        await loadCriteriaData(projectId);
+      }
     } catch (error) {
       console.error('Error loading project:', error);
     }
