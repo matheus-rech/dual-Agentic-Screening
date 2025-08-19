@@ -759,6 +759,16 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_users_for_admin_safe: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          created_at: string
+          email_hash: string
+          full_name: string
+          roles: string[]
+          user_id: string
+        }[]
+      }
       halfvec_avg: {
         Args: { "": number[] }
         Returns: unknown
