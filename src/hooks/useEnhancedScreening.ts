@@ -199,7 +199,7 @@ export const useEnhancedScreening = () => {
     setProgress({
       sessionId: '',
       stats: { current: 0, total: 0, percentage: 0, included: 0, excluded: 0, conflicts: 0 },
-      reasoningSteps: [],
+      reasoningSteps: [], // Keep reasoning steps for review even after completion
       isComplete: false
     });
     setResults([]);
@@ -207,12 +207,20 @@ export const useEnhancedScreening = () => {
     stopPolling();
   }, [stopPolling]);
 
+  const clearReasoningHistory = useCallback(() => {
+    setProgress(prev => ({
+      ...prev,
+      reasoningSteps: []
+    }));
+  }, []);
+
   return {
     isScreening,
     progress,
     results,
     error,
     startScreening,
-    resetScreening
+    resetScreening,
+    clearReasoningHistory
   };
 };

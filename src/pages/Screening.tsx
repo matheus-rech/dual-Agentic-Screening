@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Play, CheckCircle, XCircle, AlertCircle, BarChart3, Filter, Download, Users, Edit, FileText, Database, Settings } from 'lucide-react';
+import { Play, CheckCircle, XCircle, AlertCircle, BarChart3, Filter, Download, Users, Edit, FileText, Database, Settings, Clock } from 'lucide-react';
+import { TabNotification } from '@/components/TabNotification';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import Header from '@/components/Header';
 import ReferenceCard from '@/components/ReferenceCard';
 import CriteriaSummary from '@/components/CriteriaSummary';
@@ -28,6 +30,9 @@ const ScreeningDashboard = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [agreementFilter, setAgreementFilter] = useState('all');
   const [activeTab, setActiveTab] = useState('references');
+  const [hasNewAnalytics, setHasNewAnalytics] = useState(false);
+  const [hasNewLogs, setHasNewLogs] = useState(false);
+  const [lastResultsCount, setLastResultsCount] = useState(0);
   
   const { toast } = useToast();
   const { projectData } = useProject();
@@ -90,6 +95,25 @@ const ScreeningDashboard = () => {
       console.log('Auto-start conditions not met');
     }
   }, [selectedProject, criteriaData, references, searchParams, isScreening]);
+
+  // Track new results for tab notifications
+  useEffect(() => {
+    if (screeningResults.length > lastResultsCount) {
+      setHasNewAnalytics(true);
+      setHasNewLogs(true);
+      setLastResultsCount(screeningResults.length);
+    }
+  }, [screeningResults.length, lastResultsCount]);
+
+  // Reset notifications when switching tabs
+  const handleTabChange = (tabValue: string) => {
+    setActiveTab(tabValue);
+    if (tabValue === 'analytics') {
+      setHasNewAnalytics(false);
+    } else if (tabValue === 'logs') {
+      setHasNewLogs(false);
+    }
+  };
 
   const loadMostRecentProject = async () => {
     try {
@@ -458,39 +482,44 @@ const ScreeningDashboard = () => {
         </Card>
 
         {/* Tab Navigation */}
-        <div className="flex border-b mb-6">
-          {[
-            { id: 'references', label: 'References', icon: FileText },
-            { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-            { id: 'logs', label: 'Logs', icon: Database },
-            { id: 'review', label: 'Bulk Review', icon: Settings },
-            { id: 'export', label: 'Export', icon: Download },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 border-b-2 transition-colors ${
-                activeTab === tab.id
-                  ? 'border-primary text-primary bg-primary/5'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <tab.icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="references" className="flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              References
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="flex items-center gap-2">
+              <TabNotification hasNewData={hasNewAnalytics}>
+                <BarChart3 className="w-4 h-4" />
+                Analytics
+              </TabNotification>
+            </TabsTrigger>
+            <TabsTrigger value="logs" className="flex items-center gap-2">
+              <TabNotification hasNewData={hasNewLogs}>
+                <Clock className="w-4 h-4" />
+                Logs
+              </TabNotification>
+            </TabsTrigger>
+            <TabsTrigger value="review" className="flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              Bulk Review
+            </TabsTrigger>
+            <TabsTrigger value="export" className="flex items-center gap-2">
+              <Download className="w-4 h-4" />
+              Export
+            </TabsTrigger>
+          </TabsList>
 
 
-        {/* Tab Content */}
-        {activeTab === 'references' && (
-           <Card>
-             <CardHeader>
-               <CardTitle className="flex items-center gap-2">
-                 <FileText className="w-5 h-5" />
-                 References ({filteredReferences.length} of {references.length})
-               </CardTitle>
-             </CardHeader>
+          {/* Tab Content */}
+          <TabsContent value="references">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  References ({filteredReferences.length} of {references.length})
+                </CardTitle>
+              </CardHeader>
            <CardContent>
             <div className="flex flex-col sm:flex-row gap-4 mb-6">
               <div className="flex items-center gap-2">
@@ -559,35 +588,40 @@ const ScreeningDashboard = () => {
                 </div>
               )}
             </div>
-          </CardContent>
-        </Card>
-        )}
+            </CardContent>
+            </Card>
+          </TabsContent>
 
-        {activeTab === 'analytics' && selectedProject && (
-          <ScreeningAnalytics projectId={selectedProject.id} />
-        )}
+          <TabsContent value="analytics">
+            {selectedProject && <ScreeningAnalytics projectId={selectedProject.id} />}
+          </TabsContent>
 
-        {activeTab === 'logs' && selectedProject && (
-          <ScreeningLogs projectId={selectedProject.id} />
-        )}
+          <TabsContent value="logs">
+            {selectedProject && <ScreeningLogs projectId={selectedProject.id} />}
+          </TabsContent>
 
-        {activeTab === 'review' && selectedProject && (
-          <BulkReviewPanel 
-            projectId={selectedProject.id}
-            references={references}
-            screeningResults={screeningResults}
-            onReviewComplete={loadReferences}
-          />
-        )}
+          <TabsContent value="review">
+            {selectedProject && (
+              <BulkReviewPanel 
+                projectId={selectedProject.id}
+                references={references}
+                screeningResults={screeningResults}
+                onReviewComplete={loadReferences}
+              />
+            )}
+          </TabsContent>
 
-        {activeTab === 'export' && selectedProject && (
-          <ExportPanel
-            projectId={selectedProject.id}
-            references={references}
-            screeningResults={screeningResults}
-            analytics={null}
-          />
-        )}
+          <TabsContent value="export">
+            {selectedProject && (
+              <ExportPanel
+                projectId={selectedProject.id}
+                references={references}
+                screeningResults={screeningResults}
+                analytics={null}
+              />
+            )}
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );

@@ -47,6 +47,28 @@ const ScreeningAnalytics = ({ projectId }: ScreeningAnalyticsProps) => {
 
   useEffect(() => {
     loadAnalytics();
+    
+    // Set up real-time subscription for analytics updates
+    const channel = supabase
+      .channel('screening-analytics')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ai_screening_log',
+          filter: `project_id=eq.${projectId}`
+        },
+        () => {
+          console.log('Analytics data updated, refreshing...');
+          loadAnalytics();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [projectId]);
 
   const loadAnalytics = async () => {

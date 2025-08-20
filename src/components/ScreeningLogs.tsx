@@ -42,6 +42,28 @@ const ScreeningLogs = ({ projectId }: ScreeningLogsProps) => {
 
   useEffect(() => {
     loadLogs();
+    
+    // Set up real-time subscription for logs updates
+    const channel = supabase
+      .channel('screening-logs')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ai_screening_log',
+          filter: `project_id=eq.${projectId}`
+        },
+        () => {
+          console.log('Screening logs updated, refreshing...');
+          loadLogs();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [projectId]);
 
   useEffect(() => {
