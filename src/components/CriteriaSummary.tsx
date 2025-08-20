@@ -41,7 +41,7 @@ const CriteriaSummary: React.FC<CriteriaSummaryProps> = ({ criteria, onEdit }) =
           )}
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-6">
         {/* PICO Elements */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -85,39 +85,48 @@ const CriteriaSummary: React.FC<CriteriaSummaryProps> = ({ criteria, onEdit }) =
           </div>
         </div>
 
-        {/* Timeframe */}
-        {hasTimeframe && (
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Calendar className="w-4 h-4 text-primary" />
-              <span className="font-medium text-sm">Timeframe</span>
-            </div>
-            <div className="text-sm text-muted-foreground space-y-1">
-              {(criteria.timeframe_start || criteria.timeframe_end) && (
-                <p>
-                  Period: {criteria.timeframe_start || 'Not specified'} to {criteria.timeframe_end || 'Present'}
-                </p>
-              )}
-              {criteria.timeframe_description && (
-                <p>{criteria.timeframe_description}</p>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Study Designs */}
-        {criteria.study_designs && criteria.study_designs.length > 0 && (
-          <div>
-            <span className="font-medium text-sm">Study Designs:</span>
-            <div className="flex flex-wrap gap-1 mt-2">
-              {criteria.study_designs.map((design) => (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <FlaskConical className="w-4 h-4 text-primary" />
+            <span className="font-medium text-sm">Study Types</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {criteria.study_designs && criteria.study_designs.length > 0 ? (
+              criteria.study_designs.map((design) => (
                 <Badge key={design} variant="secondary" className="text-xs">
                   {design}
                 </Badge>
-              ))}
-            </div>
+              ))
+            ) : (
+              <span className="text-sm text-muted-foreground">Not specified</span>
+            )}
           </div>
-        )}
+        </div>
+
+        {/* Timeframe / Follow-up Time */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Calendar className="w-4 h-4 text-primary" />
+            <span className="font-medium text-sm">Timeframe / Follow-up Time</span>
+          </div>
+          {hasTimeframe ? (
+            <div className="text-sm text-muted-foreground space-y-1">
+              {(criteria.timeframe_start || criteria.timeframe_end) && (
+                <p>
+                  <span className="font-medium">Study Period:</span> {criteria.timeframe_start || 'Not specified'} to {criteria.timeframe_end || 'Present'}
+                </p>
+              )}
+              {criteria.timeframe_description && (
+                <p>
+                  <span className="font-medium">Follow-up Details:</span> {criteria.timeframe_description}
+                </p>
+              )}
+            </div>
+          ) : (
+            <span className="text-sm text-muted-foreground">Not specified</span>
+          )}
+        </div>
 
         {/* Inclusion Criteria */}
         {hasInclusionCriteria && (

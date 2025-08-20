@@ -60,20 +60,26 @@ Authors: ${reference.authors}
 Journal: ${reference.journal || 'Not specified'}
 Year: ${reference.year || 'Not specified'}
 
+SCREENING CRITERIA:
+
+PICO Framework:
+• Population: ${criteria.population || 'Not specified'}
+• Intervention: ${criteria.intervention || 'Not specified'}
+• Comparator: ${criteria.comparator || 'Not specified'}
+• Outcome: ${criteria.outcome || 'Not specified'}
+
+Study Types: ${criteria.studyDesigns?.join(', ') || 'Not specified'}
+
+Timeframe/Follow-up Period:
+${criteria.timeframeStart && criteria.timeframeEnd ? `• Study Period: ${criteria.timeframeStart} to ${criteria.timeframeEnd}` : ''}
+${criteria.timeframeDescription ? `• Follow-up Details: ${criteria.timeframeDescription}` : ''}
+${!criteria.timeframeStart && !criteria.timeframeEnd && !criteria.timeframeDescription ? '• Not specified' : ''}
+
 INCLUSION CRITERIA:
-Population: ${criteria.population || 'Not specified'}
-Intervention: ${criteria.intervention || 'Not specified'}
-Comparator: ${criteria.comparator || 'Not specified'}
-Outcome: ${criteria.outcome || 'Not specified'}
-Study Designs: ${criteria.studyDesigns?.join(', ') || 'Not specified'}
-${criteria.timeframeStart && criteria.timeframeEnd ? `Timeframe: ${criteria.timeframeStart} to ${criteria.timeframeEnd}` : ''}
-${criteria.timeframeDescription ? `Timeframe Details: ${criteria.timeframeDescription}` : ''}
+${criteria.inclusionCriteria?.filter(c => c.trim()).map(c => `• ${c}`).join('\n') || '• Not specified'}
 
-SPECIFIC INCLUSION CRITERIA:
-${criteria.inclusionCriteria?.filter(c => c.trim()).join('\n• ') || 'Not specified'}
-
-SPECIFIC EXCLUSION CRITERIA:
-${criteria.exclusionCriteria?.filter(c => c.trim()).join('\n• ') || 'Not specified'}
+EXCLUSION CRITERIA:
+${criteria.exclusionCriteria?.filter(c => c.trim()).map(c => `• ${c}`).join('\n') || '• Not specified'}
 
 Provide your response in this exact JSON format:
 {
