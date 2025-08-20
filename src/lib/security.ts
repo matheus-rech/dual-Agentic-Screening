@@ -34,9 +34,11 @@ export function validateFileName(fileName: string): boolean {
   // Check length
   if (fileName.length > MAX_FILENAME_LENGTH) return false;
   
-  // Check for dangerous characters
-  const dangerousChars = /[<>:"/\\|?*\x00-\x1f]/;
-  if (dangerousChars.test(fileName)) return false;
+  // Check for dangerous characters (excluding control characters for security)
+  const dangerousChars = /[<>:"/\\|?*]/;
+  // eslint-disable-next-line no-control-regex
+  const controlChars = /[\x00-\x1f]/;
+  if (dangerousChars.test(fileName) || controlChars.test(fileName)) return false;
   
   // Check for reserved names (Windows)
   const reservedNames = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)/i;
@@ -51,6 +53,7 @@ export function sanitizeTextInput(input: string): string {
   
   return input
     .trim()
+    // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
     .replace(/\s+/g, ' ') // Normalize whitespace
     .substring(0, 10000); // Limit length
@@ -99,7 +102,7 @@ export function validateURL(url: string): boolean {
 
 // DOI validation
 export function validateDOI(doi: string): boolean {
-  const doiRegex = /^10\.\d{4,}\/[-._;()\/:a-zA-Z0-9]+$/;
+  const doiRegex = /^10\.\d{4,}\/[-._;()/:a-zA-Z0-9]+$/;
   return doiRegex.test(doi);
 }
 
