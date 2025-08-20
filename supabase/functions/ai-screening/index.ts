@@ -78,9 +78,18 @@ ${criteria.exclusionCriteria?.filter(c => c.trim()).join('\n• ') || 'Not speci
 Provide your response in this exact JSON format:
 {
   "recommendation": "include|exclude|maybe",
-  "confidence": 0.85,
+  "confidence": 0.xx,
   "reasoning": "Detailed explanation of your decision"
 }
+
+IMPORTANT CONFIDENCE SCORING:
+- confidence: A decimal between 0.0 and 1.0 representing your actual certainty
+- 0.0-0.3: Very uncertain, significant ambiguity or missing information
+- 0.4-0.6: Moderate confidence, some clear indicators but potential concerns
+- 0.7-0.9: High confidence, clear evidence supporting decision
+- 1.0: Complete certainty, unambiguous decision
+
+DO NOT use default values like 0.95 or 0.85. Provide your actual confidence level based on the evidence.
 `;
 
     const reviewer1Prompt = `${basePrompt}
@@ -322,13 +331,14 @@ async function callGemini(prompt: string): Promise<AIReviewResult> {
 CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdown, no extra text):
 {
   "recommendation": "include|exclude|maybe",
-  "confidence": 0.85,
+  "confidence": 0.xx,
   "reasoning": "Your detailed explanation here"
 }
 
 The recommendation must be exactly one of: include, exclude, maybe
-The confidence must be a number between 0.0 and 1.0
-The reasoning must be a string explaining your decision.`;
+The confidence must be a number between 0.0 and 1.0 based on your actual certainty
+The reasoning must be a string explaining your decision.
+DO NOT use default confidence values - provide your real assessment.`;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {

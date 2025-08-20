@@ -365,7 +365,7 @@ const ScreeningDashboard = () => {
                   {isScreening ? (
                     <>
                       <div className="animate-spin w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full" />
-                      Screening... ({progress.stats.percentage.toFixed(1)}%)
+                      Screening...
                     </>
                   ) : screeningResults.length > 0 ? (
                     <>
@@ -387,12 +387,20 @@ const ScreeningDashboard = () => {
                 )}
               </div>
 
-              {/* Live Progress Bar */}
+              {/* Live Progress Display */}
               <ScreeningProgress
                 isVisible={isScreening || screeningResults.length > 0}
-                stats={progress.stats}
+                stats={{
+                  current: progress.stats.current,
+                  total: progress.stats.total,
+                  percentage: progress.stats.percentage,
+                  included: progress.stats.included,
+                  excluded: progress.stats.excluded,
+                  conflicts: progress.stats.conflicts,
+                  estimatedTimeRemaining: progress.stats.estimatedTimeRemaining || null
+                }}
                 currentReference={progress.currentReference}
-                isComplete={progress.isComplete}
+                isComplete={!isScreening && screeningResults.length > 0}
               />
             </div>
           </CardContent>
