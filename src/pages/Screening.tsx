@@ -106,14 +106,14 @@ const ScreeningDashboard = () => {
   }, [screeningResults.length, lastResultsCount]);
 
   // Reset notifications when switching tabs
-  const handleTabChange = (tabValue: string) => {
+  const handleTabChange = React.useCallback((tabValue: string) => {
     setActiveTab(tabValue);
     if (tabValue === 'analytics') {
       setHasNewAnalytics(false);
     } else if (tabValue === 'logs') {
       setHasNewLogs(false);
     }
-  };
+  }, []);
 
   const loadMostRecentProject = async () => {
     try {
