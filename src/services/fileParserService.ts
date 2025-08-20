@@ -75,7 +75,7 @@ export class FileParserService {
 
     entries.forEach(entry => {
       const lines = entry.split('\n');
-      let reference: Partial<ParsedReference> = {};
+      const reference: Partial<ParsedReference> = {};
 
       lines.forEach(line => {
         const [tag, ...valueParts] = line.split(' - ');
@@ -92,10 +92,11 @@ export class FileParserService {
           case 'JF':
             reference.journal = value;
             break;
-          case 'PY':
+          case 'PY': {
             const yearMatch = value.match(/(\d{4})/);
             if (yearMatch) reference.year = parseInt(yearMatch[1]);
             break;
+          }
           case 'DO':
             reference.doi = value;
             break;
@@ -122,7 +123,7 @@ export class FileParserService {
 
     entries.forEach(entry => {
       const lines = entry.split('\n');
-      let reference: Partial<ParsedReference> = {};
+      const reference: Partial<ParsedReference> = {};
 
       lines.forEach(line => {
         if (line.startsWith('%T ')) {
@@ -155,7 +156,7 @@ export class FileParserService {
 
     entries.forEach(entry => {
       const lines = entry.split('\n');
-      let reference: Partial<ParsedReference> = {};
+      const reference: Partial<ParsedReference> = {};
 
       lines.forEach(line => {
         if (line.startsWith('TI  - ')) {
