@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+import type { ParsedReference } from '@/services/fileParserService';
 
 interface ProjectData {
   id?: string;
   name: string;
   importFormat: string;
   uploadedFile?: File;
-  references?: any[];
+  references?: ParsedReference[];
 }
 
 interface ProjectContextType {
