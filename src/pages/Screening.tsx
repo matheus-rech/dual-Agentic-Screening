@@ -274,7 +274,7 @@ const ScreeningDashboard = () => {
 
   // Filter references based on current filters
   const filteredReferences = references.filter(ref => {
-    const result = screeningResults.find(r => r.referenceId === ref.id);
+    const result = screeningResults.find(r => r.id === ref.id);
     
     // Status filter
     if (statusFilter !== 'all') {
@@ -515,21 +515,21 @@ const ScreeningDashboard = () => {
 
             <div className="space-y-4">
               {filteredReferences.map((reference) => {
-                const result = screeningResults.find(r => r.referenceId === reference.id);
+                const result = screeningResults.find(r => r.id === reference.id);
                 
                 // Convert DualScreeningResult to expected format for ReferenceCard
                 const aiResult = result ? {
                   final_decision: result.finalDecision,
                   agreement: result.agreement,
                   primary_reviewer: {
-                    decision: result.reviewer1.recommendation,
-                    confidence: result.reviewer1.confidence,
-                    reasoning: result.reviewer1.reasoning
+                    decision: result.primaryReviewer.decision,
+                    confidence: result.primaryReviewer.confidence,
+                    reasoning: result.primaryReviewer.reasoning
                   },
                   secondary_reviewer: {
-                    decision: result.reviewer2.recommendation,
-                    confidence: result.reviewer2.confidence,
-                    reasoning: result.reviewer2.reasoning
+                    decision: result.secondaryReviewer.decision,
+                    confidence: result.secondaryReviewer.confidence,
+                    reasoning: result.secondaryReviewer.reasoning
                   }
                 } : null;
                 
