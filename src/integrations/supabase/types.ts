@@ -807,6 +807,14 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: boolean
       }
+      check_admin_rate_limit_strict: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      cleanup_old_audit_logs: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       create_embeddings_column_function: {
         Args: Record<PropertyKey, never>
         Returns: undefined
@@ -849,16 +857,6 @@ export type Database = {
       get_user_count: {
         Args: Record<PropertyKey, never>
         Returns: number
-      }
-      get_users_for_admin: {
-        Args: Record<PropertyKey, never>
-        Returns: {
-          created_at: string
-          email: string
-          full_name: string
-          roles: string[]
-          user_id: string
-        }[]
       }
       get_users_for_admin_safe: {
         Args: Record<PropertyKey, never>
@@ -936,6 +934,14 @@ export type Database = {
       l2_normalize: {
         Args: { "": string } | { "": unknown } | { "": unknown }
         Returns: string
+      }
+      log_security_event: {
+        Args: {
+          additional_data?: Json
+          event_description: string
+          event_type: string
+        }
+        Returns: undefined
       }
       search_papers: {
         Args:
