@@ -11,7 +11,6 @@ import BulkReviewPanel from '@/components/BulkReviewPanel';
 import ExportPanel from '@/components/ExportPanel';
 import ScreeningProgress from '@/components/ScreeningProgress';
 import ReasoningDisplay from '@/components/ReasoningDisplay';
-import TestScreening from '@/components/TestScreening';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -347,11 +346,6 @@ const ScreeningDashboard = () => {
             AI-powered systematic review screening with dual reviewers
           </p>
         </div>
-
-        {/* Debug Test Component */}
-        {selectedProject && (
-          <TestScreening projectId={selectedProject.id} />
-        )}
 
         {/* Criteria Summary */}
         {criteriaData && (

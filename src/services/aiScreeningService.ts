@@ -231,103 +231,106 @@ export class DualLLMScreener {
     const results: DualScreeningResult[] = [];
     const sessionId = crypto.randomUUID();
     const startTime = Date.now();
+    const batchSize = 5; // Process in smaller batches
+    let completed = 0;
+    
+    console.log(`Starting bulk screening of ${references.length} references in batches of ${batchSize}`);
     
     // Initialize progress tracking
     await this.initializeProgress(sessionId, projectId, references.length);
     
-    for (let i = 0; i < references.length; i++) {
-      const reference = references[i];
+    // Process references in batches
+    for (let i = 0; i < references.length; i += batchSize) {
+      const batch = references.slice(i, i + batchSize);
+      console.log(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(references.length / batchSize)}`);
+
+      // Process batch with limited concurrency
+      const batchPromises = batch.map(async (reference, batchIndex) => {
+        const globalIndex = i + batchIndex;
+        
+        try {
+          // Add staggered delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, batchIndex * 300));
+          
+          // Update current reference
+          onCurrentReference?.(reference);
+          await this.updateProgress(sessionId, reference, 'running');
+          
+          // Add reasoning step
+          await this.addReasoningStep(sessionId, reference.id, 'System', 'Starting AI screening', `Analyzing reference ${globalIndex + 1}/${references.length}: ${reference.title}`, 1.0);
+          onReasoningStep?.({
+            id: crypto.randomUUID(),
+            reviewer: 'System',
+            step: 'Starting AI screening',
+            reasoning: `Analyzing reference ${globalIndex + 1}/${references.length}: ${reference.title}`,
+            confidence: 1.0,
+            timestamp: new Date()
+          });
+          
+          const result = await this.screenReference(reference, criteria, projectId, sessionId);
+          
+          // Update progress counts
+          await this.updateProgressCounts(sessionId, result);
+          
+          // Add completion reasoning step
+          const avgConfidence = (result.primaryReviewer.confidence + result.secondaryReviewer.confidence) / 2;
+          await this.addReasoningStep(sessionId, reference.id, 'System', 'Screening completed', `Final decision: ${result.finalDecision}`, avgConfidence);
+          onReasoningStep?.({
+            id: crypto.randomUUID(),
+            reviewer: 'System',
+            step: 'Screening completed',
+            reasoning: `Final decision: ${result.finalDecision}`,
+            confidence: avgConfidence,
+            timestamp: new Date()
+          });
+          
+          return result;
+        } catch (error) {
+          console.error(`Error screening reference ${reference.id}:`, error);
+          
+          return {
+            id: reference.id,
+            title: reference.title || 'Untitled Reference',
+            primaryReviewer: { decision: 'maybe' as const, confidence: 0, reasoning: `Error: ${error.message}`, reviewer: 'Error' },
+            secondaryReviewer: { decision: 'maybe' as const, confidence: 0, reasoning: `Error: ${error.message}`, reviewer: 'Error' },
+            finalDecision: 'maybe' as const,
+            agreement: false,
+            confidence: 0,
+            processingTime: 0
+          };
+        }
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults);
+      completed += batchResults.length;
       
-      try {
-        // Update current reference
-        onCurrentReference?.(reference);
-        await this.updateProgress(sessionId, reference, 'running');
-        
-        // Add reasoning step
-        await this.addReasoningStep(sessionId, reference.id, 'System', 'Starting AI screening', `Analyzing reference: ${reference.title}`, 1.0);
-        onReasoningStep?.({
-          id: crypto.randomUUID(),
-          reviewer: 'System',
-          step: 'Starting AI screening',
-          reasoning: `Analyzing reference: ${reference.title}`,
-          confidence: 1.0,
-          timestamp: new Date()
-        });
-        
-        const result = await this.screenReference(reference, criteria, projectId, sessionId);
-        results.push(result);
-        
-        // Update progress counts
-        await this.updateProgressCounts(sessionId, result);
-        
-        // Add completion reasoning step
-        const avgConfidence = (result.primaryReviewer.confidence + result.secondaryReviewer.confidence) / 2;
-        await this.addReasoningStep(sessionId, reference.id, 'System', 'Screening completed', `Final decision: ${result.finalDecision}`, avgConfidence);
-        onReasoningStep?.({
-          id: crypto.randomUUID(),
-          reviewer: 'System',
-          step: 'Screening completed',
-          reasoning: `Final decision: ${result.finalDecision}`,
-          confidence: avgConfidence,
-          timestamp: new Date()
-        });
-        
-        // Calculate progress and estimated time
-        const completed = i + 1;
-        const progress = (completed / references.length) * 100;
-        const elapsedTime = Date.now() - startTime;
-        const estimatedTimeRemaining = completed > 0 ? Math.round((elapsedTime / completed) * (references.length - completed) / 1000) : null;
-        
-        // Update progress with time estimate
-        await supabase
-          .from('screening_progress')
-          .update({
-            current_reference_index: completed,
-            estimated_time_remaining: estimatedTimeRemaining
-          })
-          .eq('session_id', sessionId);
-        
-        onProgress?.(completed, references.length);
-        
-        // Small delay to respect API rate limits
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      } catch (error) {
-        console.error(`Error screening reference ${reference.id}:`, error);
-        
-        const errorResult = {
-          id: reference.id,
-          title: reference.title || 'Untitled Reference',
-          primaryReviewer: { decision: 'maybe' as const, confidence: 0, reasoning: 'Error occurred', reviewer: 'Error' },
-          secondaryReviewer: { decision: 'maybe' as const, confidence: 0, reasoning: 'Error occurred', reviewer: 'Error' },
-          finalDecision: 'maybe' as const,
-          agreement: false,
-          conflictResolution: 'error_occurred'
-        };
-        
-        results.push(errorResult);
-        
-        // Add error reasoning step
-        await this.addReasoningStep(sessionId, reference.id, 'System', 'Error occurred', `Error: ${error.message}`, 0);
-        onReasoningStep?.({
-          id: crypto.randomUUID(),
-          reviewer: 'System',
-          step: 'Error occurred',
-          reasoning: `Error: ${error.message}`,
-          confidence: 0,
-          timestamp: new Date()
-        });
-        
-        await this.updateProgressCounts(sessionId, errorResult);
-        onProgress?.(i + 1, references.length);
+      // Calculate progress and estimated time
+      const progress = (completed / references.length) * 100;
+      const elapsedTime = Date.now() - startTime;
+      const estimatedTimeRemaining = completed > 0 ? Math.round((elapsedTime / completed) * (references.length - completed) / 1000) : null;
+      
+      // Update progress with time estimate
+      await supabase
+        .from('screening_progress')
+        .update({
+          current_reference_index: completed,
+          estimated_time_remaining: estimatedTimeRemaining
+        })
+        .eq('session_id', sessionId);
+      
+      onProgress?.(completed, references.length);
+      
+      // Longer delay between batches
+      if (i + batchSize < references.length) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
     }
-
+    
     // Mark as completed
-    await supabase
-      .from('screening_progress')
-      .update({ status: 'completed' })
-      .eq('session_id', sessionId);
-
+    await this.updateProgress(sessionId, undefined, 'completed');
+    
+    console.log(`Bulk screening completed: ${results.length} references processed`);
     return results;
   }
 
