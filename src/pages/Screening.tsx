@@ -11,6 +11,7 @@ import BulkReviewPanel from '@/components/BulkReviewPanel';
 import ExportPanel from '@/components/ExportPanel';
 import ScreeningProgress from '@/components/ScreeningProgress';
 import ReasoningDisplay from '@/components/ReasoningDisplay';
+import ReferenceDetailsPanel from '@/components/ReferenceDetailsPanel';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -445,6 +446,11 @@ const ScreeningDashboard = () => {
           reasoningSteps={progress.reasoningSteps}
           progress={progress.stats}
         />
+
+        {/* Reference Details with AI Reasoning */}
+        {!isScreening && references.length > 0 && (
+          <ReferenceDetailsPanel references={references} />
+        )}
 
         {/* Results Summary */}
         <Card className="mb-8">

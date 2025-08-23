@@ -256,7 +256,7 @@ export class DualLLMScreener {
           onCurrentReference?.(reference);
           await this.updateProgress(sessionId, reference, 'running');
           
-          // Add reasoning step
+          // Add reasoning step for starting
           await this.addReasoningStep(sessionId, reference.id, 'System', 'Starting AI screening', `Analyzing reference ${globalIndex + 1}/${references.length}: ${reference.title}`, 1.0);
           onReasoningStep?.({
             id: crypto.randomUUID(),
@@ -269,18 +269,56 @@ export class DualLLMScreener {
           
           const result = await this.screenReference(reference, criteria, projectId, sessionId);
           
+          // Log detailed reasoning for both reviewers
+          await this.addReasoningStep(
+            sessionId, 
+            reference.id, 
+            result.primaryReviewer.reviewer, 
+            `Decision: ${result.primaryReviewer.decision}`, 
+            result.primaryReviewer.reasoning, 
+            result.primaryReviewer.confidence
+          );
+          onReasoningStep?.({
+            id: crypto.randomUUID(),
+            reviewer: result.primaryReviewer.reviewer,
+            step: `Decision: ${result.primaryReviewer.decision}`,
+            reasoning: result.primaryReviewer.reasoning,
+            confidence: result.primaryReviewer.confidence,
+            timestamp: new Date()
+          });
+
+          await this.addReasoningStep(
+            sessionId, 
+            reference.id, 
+            result.secondaryReviewer.reviewer, 
+            `Decision: ${result.secondaryReviewer.decision}`, 
+            result.secondaryReviewer.reasoning, 
+            result.secondaryReviewer.confidence
+          );
+          onReasoningStep?.({
+            id: crypto.randomUUID(),
+            reviewer: result.secondaryReviewer.reviewer,
+            step: `Decision: ${result.secondaryReviewer.decision}`,
+            reasoning: result.secondaryReviewer.reasoning,
+            confidence: result.secondaryReviewer.confidence,
+            timestamp: new Date()
+          });
+          
           // Update progress counts
           await this.updateProgressCounts(sessionId, result);
           
-          // Add completion reasoning step
-          const avgConfidence = (result.primaryReviewer.confidence + result.secondaryReviewer.confidence) / 2;
-          await this.addReasoningStep(sessionId, reference.id, 'System', 'Screening completed', `Final decision: ${result.finalDecision}`, avgConfidence);
+          // Add final consensus step
+          const consensusMessage = result.agreement 
+            ? `Both reviewers agreed on "${result.finalDecision}" (Confidence: ${Math.round(((result.primaryReviewer.confidence + result.secondaryReviewer.confidence) / 2) * 100)}%)`
+            : `Reviewers disagreed - ${result.primaryReviewer.reviewer}: ${result.primaryReviewer.decision}, ${result.secondaryReviewer.reviewer}: ${result.secondaryReviewer.decision}. Final: ${result.finalDecision}`;
+          
+          await this.addReasoningStep(sessionId, reference.id, 'System', 'Final consensus', consensusMessage, 1.0);
           onReasoningStep?.({
             id: crypto.randomUUID(),
             reviewer: 'System',
-            step: 'Screening completed',
-            reasoning: `Final decision: ${result.finalDecision}`,
-            confidence: avgConfidence,
+            step: 'Final consensus',
+            reasoning: consensusMessage,
+            confidence: 1.0,
             timestamp: new Date()
           });
           
