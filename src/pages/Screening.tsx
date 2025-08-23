@@ -11,6 +11,7 @@ import BulkReviewPanel from '@/components/BulkReviewPanel';
 import ExportPanel from '@/components/ExportPanel';
 import ScreeningProgress from '@/components/ScreeningProgress';
 import ReasoningDisplay from '@/components/ReasoningDisplay';
+import TestScreening from '@/components/TestScreening';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -230,6 +231,13 @@ const ScreeningDashboard = () => {
       return;
     }
 
+    // Add debug logging
+    console.log('DEBUG: Starting screening process', {
+      referencesCount: references.length,
+      criteria: criteriaData,
+      projectId: selectedProject?.id
+    });
+
     try {
       await startScreening(
         references.map(ref => ({
@@ -259,10 +267,10 @@ const ScreeningDashboard = () => {
         loadReferences(); // Reload to get updated results
       }
     } catch (error) {
-      console.error('Error starting screening:', error);
+      console.error('DEBUG: Error starting screening:', error);
       toast({
         title: "Screening Failed",
-        description: 'Failed to start screening process',
+        description: `Failed to start screening: ${error.message}`,
         variant: "destructive",
       });
     }
@@ -339,6 +347,11 @@ const ScreeningDashboard = () => {
             AI-powered systematic review screening with dual reviewers
           </p>
         </div>
+
+        {/* Debug Test Component */}
+        {selectedProject && (
+          <TestScreening projectId={selectedProject.id} />
+        )}
 
         {/* Criteria Summary */}
         {criteriaData && (
