@@ -38,27 +38,35 @@ const ReferenceDetailsPanel: React.FC<ReferenceDetailsPanelProps> = ({ reference
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'include':
+      case 'included':
         return <CheckCircle className="w-4 h-4 text-success" />;
       case 'exclude':
+      case 'excluded':
         return <XCircle className="w-4 h-4 text-destructive" />;
       case 'maybe':
+      case 'uncertain':
         return <AlertCircle className="w-4 h-4 text-warning" />;
+      case 'conflict':
+        return <AlertCircle className="w-4 h-4 text-destructive" />;
       default:
         return <Brain className="w-4 h-4 text-muted-foreground" />;
     }
   };
 
   const getStatusBadge = (status: string, conflictFlag?: boolean) => {
-    if (conflictFlag) {
+    if (conflictFlag || status === 'conflict') {
       return <Badge variant="destructive">Conflict</Badge>;
     }
     
     switch (status) {
       case 'include':
+      case 'included':
         return <Badge variant="default" className="bg-success text-success-foreground">Include</Badge>;
       case 'exclude':
+      case 'excluded':
         return <Badge variant="secondary">Exclude</Badge>;
       case 'maybe':
+      case 'uncertain':
         return <Badge variant="outline" className="border-warning text-warning">Maybe</Badge>;
       default:
         return <Badge variant="outline">Pending</Badge>;
@@ -132,8 +140,16 @@ const ReferenceDetailsPanel: React.FC<ReferenceDetailsPanelProps> = ({ reference
     );
   };
 
-  const processedReferences = references.filter(ref => ref.status && ref.status !== 'pending');
-  const pendingReferences = references.filter(ref => !ref.status || ref.status === 'pending');
+  const processedReferences = references.filter(ref => 
+    ref.status && 
+    ref.status !== 'pending' && 
+    ['included', 'excluded', 'uncertain', 'conflict'].includes(ref.status)
+  );
+  const pendingReferences = references.filter(ref => 
+    !ref.status || 
+    ref.status === 'pending' ||
+    !['included', 'excluded', 'uncertain', 'conflict'].includes(ref.status)
+  );
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

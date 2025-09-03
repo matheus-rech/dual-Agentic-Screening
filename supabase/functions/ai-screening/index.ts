@@ -120,18 +120,30 @@ AI Reviewer 2 - Focus on comprehensive evidence evaluation. Consider the broader
     const finalDecision = agreement ? reviewer1Result.recommendation : 'maybe';
     const averageConfidence = agreement ? (reviewer1Result.confidence + reviewer2Result.confidence) / 2 : Math.max(reviewer1Result.confidence, reviewer2Result.confidence);
 
+    // Map decisions to database-compatible values
+    const mapDecision = (decision: string) => {
+      switch (decision) {
+        case 'include': return 'included';
+        case 'exclude': return 'excluded';
+        case 'maybe': return 'uncertain';
+        default: return 'uncertain';
+      }
+    };
+
+    const finalDecisionMapped = mapDecision(finalDecision);
+
     // Log screening results
     const { error: logError } = await supabase
       .from('ai_screening_log')
       .insert({
         project_id: projectId,
         reference_id: referenceId,
-        screening_stage: 'title_abstract',
-        primary_model_decision: reviewer1Result.recommendation,
+        screening_stage: 'title_abstract_screening',
+        primary_model_decision: mapDecision(reviewer1Result.recommendation),
         primary_model_confidence: reviewer1Result.confidence,
-        secondary_model_decision: reviewer2Result.recommendation,
+        secondary_model_decision: mapDecision(reviewer2Result.recommendation),
         secondary_model_confidence: reviewer2Result.confidence,
-        final_decision: finalDecision,
+        final_decision: finalDecisionMapped,
         decision_reason: {
           reviewer1: reviewer1Result,
           reviewer2: reviewer2Result,
@@ -148,8 +160,8 @@ AI Reviewer 2 - Focus on comprehensive evidence evaluation. Consider the broader
     const { error: updateError } = await supabase
       .from('references')
       .update({
-        status: finalDecision,
-        ai_recommendation: finalDecision,
+        status: finalDecisionMapped,
+        ai_recommendation: finalDecisionMapped,
         ai_confidence: averageConfidence,
         ai_screening_details: {
           reviewer1: reviewer1Result,
