@@ -153,24 +153,58 @@ AI Reviewer 1 - CONSERVATIVE APPROACH: Apply strict criteria adherence. If there
 
 AI Reviewer 2 - COMPREHENSIVE APPROACH: Consider broader scientific value and potential relevance. If the study could contribute valuable insights despite minor criteria gaps, lean toward INCLUDE. Only recommend EXCLUDE when clearly irrelevant.`;
 
-    // Parallel API calls to both AI providers
-    const [reviewer1Result, reviewer2Result] = await Promise.all([
-      callOpenAI(reviewer1Prompt),
-      callGemini(reviewer2Prompt)
-    ]);
+    // Smart AI provider selection with quota-aware fallback
+    let reviewer1Result: AIReviewResult;
+    let reviewer2Result: AIReviewResult;
+    let useHybridMode = false;
+
+    try {
+      // Attempt parallel calls first
+      const [result1, result2] = await Promise.all([
+        callOpenAI(reviewer1Prompt),
+        callGeminiWithFallback(reviewer2Prompt)
+      ]);
+      
+      reviewer1Result = result1;
+      reviewer2Result = result2;
+      
+      // Check if Gemini failed due to quota
+      if (reviewer2Result.reviewer.includes('Error') && reviewer2Result.confidence === 0) {
+        console.log('Gemini unavailable, switching to enhanced OpenAI mode');
+        useHybridMode = true;
+        // Get second opinion from OpenAI with different approach
+        reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Alternative)');
+      }
+      
+    } catch (error) {
+      console.error('Both AI providers failed, attempting fallback strategy:', error);
+      
+      // Fallback: Try OpenAI only with both prompts
+      try {
+        reviewer1Result = await callOpenAI(reviewer1Prompt);
+        reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Backup)');
+        useHybridMode = true;
+        console.log('Successfully switched to OpenAI-only mode');
+      } catch (fallbackError) {
+        console.error('All fallback strategies failed:', fallbackError);
+        throw new Error(`All AI providers failed: ${fallbackError.message}`);
+      }
+    }
 
     console.log('Reviewer 1 result:', reviewer1Result);
     console.log('Reviewer 2 result:', reviewer2Result);
+    console.log('Using hybrid mode:', useHybridMode);
 
-    // Evaluate agreement and resolve conflicts
-    const agreement = reviewer1Result.recommendation === reviewer2Result.recommendation;
+    // Enhanced agreement evaluation with error handling
+    const bothReviewersValid = reviewer1Result.confidence > 0 && reviewer2Result.confidence > 0;
+    const agreement = bothReviewersValid && (reviewer1Result.recommendation === reviewer2Result.recommendation);
     let finalDecision: string;
     let averageConfidence: number;
     
-    if (agreement) {
+    if (agreement && bothReviewersValid) {
       finalDecision = reviewer1Result.recommendation;
       averageConfidence = (reviewer1Result.confidence + reviewer2Result.confidence) / 2;
-    } else {
+    } else if (bothReviewersValid) {
       // Conflict resolution: Use the decision with higher confidence
       if (reviewer1Result.confidence > reviewer2Result.confidence) {
         finalDecision = reviewer1Result.recommendation;
@@ -182,6 +216,22 @@ AI Reviewer 2 - COMPREHENSIVE APPROACH: Consider broader scientific value and po
         // Equal confidence: Default to conservative approach (exclude)
         finalDecision = 'exclude';
         averageConfidence = Math.max(reviewer1Result.confidence, reviewer2Result.confidence);
+      }
+    } else {
+      // One or both reviewers failed - use the valid one or default to exclude
+      if (reviewer1Result.confidence > 0) {
+        finalDecision = reviewer1Result.recommendation;
+        averageConfidence = reviewer1Result.confidence;
+        console.log('Using Reviewer 1 result due to Reviewer 2 failure');
+      } else if (reviewer2Result.confidence > 0) {
+        finalDecision = reviewer2Result.recommendation;
+        averageConfidence = reviewer2Result.confidence;
+        console.log('Using Reviewer 2 result due to Reviewer 1 failure');
+      } else {
+        // Both failed - default to exclude for safety
+        finalDecision = 'exclude';
+        averageConfidence = 0.1;
+        console.warn('Both reviewers failed - defaulting to exclude');
       }
     }
 
@@ -265,7 +315,7 @@ AI Reviewer 2 - COMPREHENSIVE APPROACH: Consider broader scientific value and po
   }
 });
 
-async function callOpenAI(prompt: string): Promise<AIReviewResult> {
+async function callOpenAI(prompt: string, reviewerName: string = 'OpenAI GPT-4o'): Promise<AIReviewResult> {
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!apiKey) throw new Error('OpenAI API key not configured');
 
@@ -485,7 +535,7 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
         recommendation: result.recommendation,
         confidence: result.confidence,
         reasoning: result.reasoning,
-        reviewer: 'OpenAI GPT-4o',
+        reviewer: reviewerName,
         picott_assessment: result.picott_assessment,
         criteria_assessment: result.criteria_assessment
       };
@@ -700,4 +750,33 @@ Use analysis and reasoning to make the best decision possible even with incomple
 
   // This should never be reached, but just in case
   throw lastError;
+}
+
+async function callGeminiWithFallback(prompt: string): Promise<AIReviewResult> {
+  try {
+    // First, try the regular Gemini call
+    return await callGemini(prompt);
+  } catch (error) {
+    console.error('Gemini call failed, analyzing error:', error.message);
+    
+    // Check if it's a quota error
+    if (error.message.includes('quota exceeded') || error.message.includes('429')) {
+      console.log('Gemini quota exceeded - will be handled by fallback strategy');
+      // Return an error result that will trigger OpenAI fallback
+      return {
+        recommendation: 'exclude',
+        confidence: 0.0,
+        reasoning: `Gemini API quota exceeded. Fallback to OpenAI will be attempted. Details: ${error.message}`,
+        reviewer: 'Google Gemini (Quota Exceeded)'
+      };
+    }
+    
+    // For other errors, still return error result but with different message
+    return {
+      recommendation: 'exclude',
+      confidence: 0.0,
+      reasoning: `Gemini API error encountered. Details: ${error.message}. Manual review may be required.`,
+      reviewer: 'Google Gemini (Error)'
+    };
+  }
 }
