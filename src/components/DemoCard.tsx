@@ -24,27 +24,42 @@ const DemoCard = () => {
     setIsLoading(true);
     try {
       const result = await loadDemoData();
+      const { demoReferences } = await import('@/services/demoDataService');
       
-      // Update project context
+      // Load complete project data into context
       setProjectData({
         id: result.project.id,
         name: result.project.name,
-        importFormat: 'demo'
+        description: result.project.description,
+        importFormat: 'demo',
+        references: demoReferences,
+        status: 'criteria_defined',
+        total_references: result.referencesCount,
+        criteria: {
+          population: result.project.population,
+          intervention: result.project.intervention,
+          comparator: result.project.comparator,
+          outcome: result.project.outcome,
+          study_designs: result.project.study_designs,
+          timeframe_start: result.project.timeframe_start,
+          timeframe_end: result.project.timeframe_end,
+          timeframe_description: result.project.timeframe_description,
+          use_advanced_ai: result.project.use_advanced_ai,
+          dual_ai_review: result.project.dual_ai_review
+        }
       });
 
       toast({
-        title: "Demo data loaded successfully",
-        description: `Created project with ${result.referencesCount} research references about ICP monitoring in TBI`,
+        title: "Demo loaded successfully!",
+        description: `Loaded ${result.referencesCount} sample references with pre-configured PICO criteria.`,
       });
 
-      // Navigate to criteria page to review/modify criteria before screening
       navigate('/criteria');
-
     } catch (error) {
-      console.error('Error loading demo data:', error);
+      console.error('Error loading demo:', error);
       toast({
-        title: "Failed to load demo data",
-        description: error instanceof Error ? error.message : "An unexpected error occurred",
+        title: "Demo load failed",
+        description: "There was an error loading the demo data. Please try again.",
         variant: "destructive",
       });
     } finally {

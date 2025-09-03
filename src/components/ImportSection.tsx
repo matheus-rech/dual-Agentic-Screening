@@ -83,12 +83,17 @@ const ImportSection = () => {
         return;
       }
 
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+
       // Create project in database with sanitized input
       const { data: project, error: projectError } = await supabase
         .from('review_projects')
         .insert({
           name: sanitizedProjectName,
-          status: 'draft'
+          status: 'draft',
+          user_id: user?.id,
+          total_references: references.length
         })
         .select()
         .single();
@@ -96,9 +101,6 @@ const ImportSection = () => {
       if (projectError) {
         throw projectError;
       }
-
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
       
       // Insert references into database
       const referencesToInsert = references.map(ref => ({
@@ -123,13 +125,15 @@ const ImportSection = () => {
         throw referencesError;
       }
 
-      // Update project context
+      // Update project context with comprehensive data
       setProjectData({
         id: project.id,
         name: sanitizedProjectName,
         importFormat,
         uploadedFile,
-        references
+        references,
+        status: 'draft',
+        total_references: references.length
       });
 
       toast({
