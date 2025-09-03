@@ -40,7 +40,7 @@ const ReasoningDisplay: React.FC<ReasoningDisplayProps> = ({
   progress
 }) => {
   const [autoScroll, setAutoScroll] = useState(true);
-  const [timelinePosition, setTimelinePosition] = useState(100);
+  const [timelinePosition, setTimelinePosition] = useState(0);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [groupedSteps, setGroupedSteps] = useState<{ [referenceId: string]: ReasoningStep[] }>({});
 
@@ -68,6 +68,11 @@ const ReasoningDisplay: React.FC<ReasoningDisplayProps> = ({
     }, {} as { [referenceId: string]: ReasoningStep[] });
     setGroupedSteps(grouped);
   }, [filteredByTimeline]);
+
+  // Auto-update timeline position based on actual progress
+  useEffect(() => {
+    setTimelinePosition(progress.percentage);
+  }, [progress.percentage]);
 
   // Auto-scroll to bottom when new steps are added
   useEffect(() => {
