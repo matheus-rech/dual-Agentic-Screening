@@ -28,6 +28,11 @@ interface ScreeningRequest {
     comparator?: string;
     outcome?: string;
     studyDesigns?: string[];
+    timeframeStart?: string;
+    timeframeEnd?: string;
+    timeframeDescription?: string;
+    inclusionCriteria?: string[];
+    exclusionCriteria?: string[];
   };
   projectId: string;
 }
@@ -37,6 +42,18 @@ interface AIReviewResult {
   confidence: number;
   reasoning: string;
   reviewer: string;
+  picott_assessment?: {
+    population: { status: string; evidence: string };
+    intervention: { status: string; evidence: string };
+    comparator: { status: string; evidence: string };
+    outcome: { status: string; evidence: string };
+    timeframe: { status: string; evidence: string };
+    study_design: { status: string; evidence: string };
+  };
+  criteria_assessment?: {
+    inclusion_criteria: Array<{ criterion: string; status: string; evidence: string }>;
+    exclusion_criteria: Array<{ criterion: string; status: string; evidence: string }>;
+  };
 }
 
 serve(async (req) => {
@@ -83,13 +100,36 @@ ${criteria.exclusionCriteria?.filter(c => c.trim()).map(c => `• ${c}`).join('\
 
 You MUST make a definitive decision: either INCLUDE or EXCLUDE. "Maybe" is NOT an option.
 
+ANALYSIS REQUIREMENTS:
+1. First, assess each PICOTT element and criteria against the abstract
+2. For each element, provide either:
+   - Direct quote from abstract if explicitly stated
+   - Your rationale if inferred or absent
+3. Then provide your final reasoning and decision
+
 Use thorough analysis, reflection, and reasoning to determine if the abstract is more likely to meet the inclusion criteria or not. Even with uncertainty, make the best decision based on available evidence.
 
 Provide your response in this exact JSON format:
 {
   "recommendation": "include|exclude",
   "confidence": 0.xx,
-  "reasoning": "Detailed explanation of your decision and why you chose include/exclude despite any uncertainties"
+  "picott_assessment": {
+    "population": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "intervention": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "comparator": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "outcome": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "timeframe": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "study_design": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"}
+  },
+  "criteria_assessment": {
+    "inclusion_criteria": [
+      {"criterion": "criterion text", "status": "met|not_met|unclear", "evidence": "Direct quote or rationale"}
+    ],
+    "exclusion_criteria": [
+      {"criterion": "criterion text", "status": "violated|not_violated|unclear", "evidence": "Direct quote or rationale"}
+    ]
+  },
+  "reasoning": "Final decision reasoning based on the above assessment and why you chose include/exclude despite any uncertainties"
 }
 
 DECISION GUIDELINES:
@@ -242,11 +282,95 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
         minimum: 0,
         maximum: 1
       },
+      picott_assessment: {
+        type: "object",
+        properties: {
+          population: {
+            type: "object",
+            properties: {
+              status: { type: "string", enum: ["present", "absent", "unclear"] },
+              evidence: { type: "string" }
+            },
+            required: ["status", "evidence"]
+          },
+          intervention: {
+            type: "object",
+            properties: {
+              status: { type: "string", enum: ["present", "absent", "unclear"] },
+              evidence: { type: "string" }
+            },
+            required: ["status", "evidence"]
+          },
+          comparator: {
+            type: "object",
+            properties: {
+              status: { type: "string", enum: ["present", "absent", "unclear"] },
+              evidence: { type: "string" }
+            },
+            required: ["status", "evidence"]
+          },
+          outcome: {
+            type: "object",
+            properties: {
+              status: { type: "string", enum: ["present", "absent", "unclear"] },
+              evidence: { type: "string" }
+            },
+            required: ["status", "evidence"]
+          },
+          timeframe: {
+            type: "object",
+            properties: {
+              status: { type: "string", enum: ["present", "absent", "unclear"] },
+              evidence: { type: "string" }
+            },
+            required: ["status", "evidence"]
+          },
+          study_design: {
+            type: "object",
+            properties: {
+              status: { type: "string", enum: ["present", "absent", "unclear"] },
+              evidence: { type: "string" }
+            },
+            required: ["status", "evidence"]
+          }
+        },
+        required: ["population", "intervention", "comparator", "outcome", "timeframe", "study_design"]
+      },
+      criteria_assessment: {
+        type: "object",
+        properties: {
+          inclusion_criteria: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                criterion: { type: "string" },
+                status: { type: "string", enum: ["met", "not_met", "unclear"] },
+                evidence: { type: "string" }
+              },
+              required: ["criterion", "status", "evidence"]
+            }
+          },
+          exclusion_criteria: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                criterion: { type: "string" },
+                status: { type: "string", enum: ["violated", "not_violated", "unclear"] },
+                evidence: { type: "string" }
+              },
+              required: ["criterion", "status", "evidence"]
+            }
+          }
+        },
+        required: ["inclusion_criteria", "exclusion_criteria"]
+      },
       reasoning: {
         type: "string"
       }
     },
-    required: ["recommendation", "confidence", "reasoning"],
+    required: ["recommendation", "confidence", "picott_assessment", "criteria_assessment", "reasoning"],
     additionalProperties: false
   };
 
@@ -333,7 +457,9 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
         recommendation: result.recommendation,
         confidence: result.confidence,
         reasoning: result.reasoning,
-        reviewer: 'OpenAI GPT-4o'
+        reviewer: 'OpenAI GPT-4o',
+        picott_assessment: result.picott_assessment,
+        criteria_assessment: result.criteria_assessment
       };
 
     } catch (error) {
@@ -376,7 +502,23 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
 {
   "recommendation": "include|exclude",
   "confidence": 0.xx,
-  "reasoning": "Your detailed explanation here including why you chose include/exclude despite any uncertainties"
+  "picott_assessment": {
+    "population": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "intervention": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "comparator": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "outcome": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "timeframe": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "study_design": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"}
+  },
+  "criteria_assessment": {
+    "inclusion_criteria": [
+      {"criterion": "criterion text", "status": "met|not_met|unclear", "evidence": "Direct quote or rationale"}
+    ],
+    "exclusion_criteria": [
+      {"criterion": "criterion text", "status": "violated|not_violated|unclear", "evidence": "Direct quote or rationale"}
+    ]
+  },
+  "reasoning": "Final decision reasoning based on the above assessment and why you chose include/exclude despite any uncertainties"
 }
 
 The recommendation must be exactly one of: include, exclude
@@ -484,7 +626,9 @@ Use analysis and reasoning to make the best decision possible even with incomple
         recommendation: result.recommendation,
         confidence: result.confidence,
         reasoning: result.reasoning,
-        reviewer: 'Google Gemini'
+        reviewer: 'Google Gemini',
+        picott_assessment: result.picott_assessment,
+        criteria_assessment: result.criteria_assessment
       };
 
     } catch (error) {
