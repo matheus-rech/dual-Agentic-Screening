@@ -24,7 +24,7 @@ import { useEnhancedScreening } from '@/hooks/useEnhancedScreening';
 import { useProject } from '@/contexts/ProjectContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
-const ScreeningDashboard = () => {
+const Screening = () => {
   const [references, setReferences] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [criteriaData, setCriteriaData] = useState(null);
@@ -612,4 +612,4 @@ const ScreeningDashboard = () => {
   );
 };
 
-export default ScreeningDashboard;
+export default Screening;
