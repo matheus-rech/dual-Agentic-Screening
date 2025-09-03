@@ -9,7 +9,7 @@ import ScreeningLogs from '@/components/ScreeningLogs';
 import ScreeningAnalytics from '@/components/ScreeningAnalytics';
 import BulkReviewPanel from '@/components/BulkReviewPanel';
 import ExportPanel from '@/components/ExportPanel';
-import ScreeningProgress from '@/components/ScreeningProgress';
+
 import ReasoningDisplay from '@/components/ReasoningDisplay';
 import ReferenceDetailsPanel from '@/components/ReferenceDetailsPanel';
 import { Button } from '@/components/ui/button';
@@ -419,21 +419,6 @@ const ScreeningDashboard = () => {
                 )}
               </div>
 
-              {/* Live Progress Display */}
-              <ScreeningProgress
-                isVisible={isScreening || screeningResults.length > 0}
-                stats={{
-                  current: progress.stats.current,
-                  total: progress.stats.total,
-                  percentage: progress.stats.percentage,
-                  included: progress.stats.included,
-                  excluded: progress.stats.excluded,
-                  conflicts: progress.stats.conflicts,
-                  estimatedTimeRemaining: progress.stats.estimatedTimeRemaining || null
-                }}
-                currentReference={progress.currentReference}
-                isComplete={!isScreening && screeningResults.length > 0}
-              />
             </div>
           </CardContent>
         </Card>
