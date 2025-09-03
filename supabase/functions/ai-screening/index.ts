@@ -269,9 +269,10 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!apiKey) throw new Error('OpenAI API key not configured');
 
-  // Define JSON schema for structured output
+  // Define JSON schema for structured output with strict compliance
   const responseSchema = {
     type: "object",
+    additionalProperties: false,
     properties: {
       recommendation: {
         type: "string",
@@ -284,104 +285,103 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
       },
       picott_assessment: {
         type: "object",
+        additionalProperties: false,
         properties: {
           population: {
             type: "object",
+            additionalProperties: false,
             properties: {
               status: { type: "string", enum: ["present", "absent", "unclear"] },
               evidence: { type: "string" }
             },
-            required: ["status", "evidence"],
-            additionalProperties: false
+            required: ["status", "evidence"]
           },
           intervention: {
             type: "object",
+            additionalProperties: false,
             properties: {
               status: { type: "string", enum: ["present", "absent", "unclear"] },
               evidence: { type: "string" }
             },
-            required: ["status", "evidence"],
-            additionalProperties: false
+            required: ["status", "evidence"]
           },
           comparator: {
             type: "object",
+            additionalProperties: false,
             properties: {
               status: { type: "string", enum: ["present", "absent", "unclear"] },
               evidence: { type: "string" }
             },
-            required: ["status", "evidence"],
-            additionalProperties: false
+            required: ["status", "evidence"]
           },
           outcome: {
             type: "object",
+            additionalProperties: false,
             properties: {
               status: { type: "string", enum: ["present", "absent", "unclear"] },
               evidence: { type: "string" }
             },
-            required: ["status", "evidence"],
-            additionalProperties: false
+            required: ["status", "evidence"]
           },
           timeframe: {
             type: "object",
+            additionalProperties: false,
             properties: {
               status: { type: "string", enum: ["present", "absent", "unclear"] },
               evidence: { type: "string" }
             },
-            required: ["status", "evidence"],
-            additionalProperties: false
+            required: ["status", "evidence"]
           },
           study_design: {
             type: "object",
+            additionalProperties: false,
             properties: {
               status: { type: "string", enum: ["present", "absent", "unclear"] },
               evidence: { type: "string" }
             },
-            required: ["status", "evidence"],
-            additionalProperties: false
+            required: ["status", "evidence"]
           }
         },
-        required: ["population", "intervention", "comparator", "outcome", "timeframe", "study_design"],
-        additionalProperties: false
+        required: ["population", "intervention", "comparator", "outcome", "timeframe", "study_design"]
       },
       criteria_assessment: {
         type: "object",
+        additionalProperties: false,
         properties: {
           inclusion_criteria: {
             type: "array",
             items: {
               type: "object",
+              additionalProperties: false,
               properties: {
                 criterion: { type: "string" },
                 status: { type: "string", enum: ["met", "not_met", "unclear"] },
                 evidence: { type: "string" }
               },
-              required: ["criterion", "status", "evidence"],
-              additionalProperties: false
+              required: ["criterion", "status", "evidence"]
             }
           },
           exclusion_criteria: {
             type: "array",
             items: {
               type: "object",
+              additionalProperties: false,
               properties: {
                 criterion: { type: "string" },
                 status: { type: "string", enum: ["violated", "not_violated", "unclear"] },
                 evidence: { type: "string" }
               },
-              required: ["criterion", "status", "evidence"],
-              additionalProperties: false
+              required: ["criterion", "status", "evidence"]
             }
           }
         },
-        required: ["inclusion_criteria", "exclusion_criteria"],
-        additionalProperties: false
+        required: ["inclusion_criteria", "exclusion_criteria"]
       },
       reasoning: {
         type: "string"
       }
     },
-    required: ["recommendation", "confidence", "picott_assessment", "criteria_assessment", "reasoning"],
-    additionalProperties: false
+    required: ["recommendation", "confidence", "picott_assessment", "criteria_assessment", "reasoning"]
   };
 
   const maxRetries = 3;
@@ -424,8 +424,26 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
 
       if (!response.ok) {
         const errorText = await response.text();
-        lastError = new Error(`OpenAI API error (${response.status}): ${errorText}`);
-        console.error(`OpenAI attempt ${attempt} failed:`, lastError.message);
+        let errorDetails;
+        try {
+          errorDetails = JSON.parse(errorText);
+        } catch {
+          errorDetails = { message: errorText };
+        }
+        
+        lastError = new Error(`OpenAI API error (${response.status}): ${JSON.stringify(errorDetails)}`);
+        console.error(`OpenAI attempt ${attempt} failed:`, {
+          status: response.status,
+          error: errorDetails,
+          attempt: attempt,
+          maxRetries: maxRetries
+        });
+        
+        // For schema errors, don't retry as they won't resolve
+        if (response.status === 400 && errorText.includes('Invalid schema')) {
+          console.error('Schema validation error - not retrying:', errorDetails);
+          throw lastError;
+        }
         
         if (attempt === maxRetries) throw lastError;
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
@@ -559,8 +577,27 @@ Use analysis and reasoning to make the best decision possible even with incomple
 
       if (!response.ok) {
         const errorText = await response.text();
-        lastError = new Error(`Gemini API error (${response.status}): ${errorText}`);
-        console.error(`Gemini attempt ${attempt} failed:`, lastError.message);
+        let errorDetails;
+        try {
+          errorDetails = JSON.parse(errorText);
+        } catch {
+          errorDetails = { message: errorText };
+        }
+        
+        lastError = new Error(`Gemini API error (${response.status}): ${JSON.stringify(errorDetails)}`);
+        console.error(`Gemini attempt ${attempt} failed:`, {
+          status: response.status,
+          error: errorDetails,
+          attempt: attempt,
+          maxRetries: maxRetries
+        });
+        
+        // For quota errors, provide helpful message
+        if (response.status === 429) {
+          const quotaError = new Error(`Gemini API quota exceeded. Please wait for quota reset or upgrade your plan. Details: ${JSON.stringify(errorDetails)}`);
+          console.error('Gemini quota exceeded:', errorDetails);
+          throw quotaError;
+        }
         
         if (attempt === maxRetries) throw lastError;
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
