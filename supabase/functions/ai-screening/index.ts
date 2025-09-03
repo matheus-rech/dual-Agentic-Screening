@@ -12,6 +12,8 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 );
 
+const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
+
 interface ScreeningRequest {
   referenceId: string;
   reference: {
@@ -172,47 +174,79 @@ AI Reviewer 1 - CONSERVATIVE APPROACH: Apply strict criteria adherence. If there
 
 AI Reviewer 2 - COMPREHENSIVE APPROACH: Consider broader scientific value and potential relevance. If the study could contribute valuable insights despite minor criteria gaps, lean toward INCLUDE. Only recommend EXCLUDE when clearly irrelevant.`;
 
-    // Smart AI provider selection with quota-aware fallback
+    // Enhanced AI provider selection with OpenRouter integration
     let reviewer1Result: AIReviewResult;
     let reviewer2Result: AIReviewResult;
-    let useHybridMode = false;
+    let useOpenRouterMode = false;
 
     try {
-      // Attempt parallel calls first
+      // Primary strategy: Use OpenRouter with Claude for conservative reviewer (more careful analysis)
+      // and Gemini for comprehensive reviewer
       const [result1, result2] = await Promise.all([
-        callOpenAI(reviewer1Prompt),
+        callOpenRouter(reviewer1Prompt, 'anthropic/claude-3-haiku', 'OpenRouter (Claude-3-Haiku Conservative)'),
         callGeminiWithFallback(reviewer2Prompt)
       ]);
       
       reviewer1Result = result1;
       reviewer2Result = result2;
+      useOpenRouterMode = true;
+      console.log('Successfully using OpenRouter (Claude) + Gemini strategy');
       
-      // Check if Gemini failed due to quota
+      // Check if Gemini failed and needs OpenAI fallback
       if (reviewer2Result.reviewer.includes('Error') && reviewer2Result.confidence === 0) {
-        console.log('Gemini unavailable, switching to enhanced OpenAI mode');
-        useHybridMode = true;
-        // Get second opinion from OpenAI with different approach
-        reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Alternative)');
+        console.log('Gemini unavailable, switching to OpenAI for reviewer 2');
+        reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Fallback)');
       }
       
     } catch (error) {
-      console.error('Both AI providers failed, attempting fallback strategy:', error);
+      console.error('OpenRouter + Gemini strategy failed, trying OpenAI + Gemini:', error);
       
-      // Fallback: Try OpenAI only with both prompts
+      // Fallback 1: Try original OpenAI + Gemini approach
       try {
-        reviewer1Result = await callOpenAI(reviewer1Prompt);
-        reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Backup)');
-        useHybridMode = true;
-        console.log('Successfully switched to OpenAI-only mode');
-      } catch (fallbackError) {
-        console.error('All fallback strategies failed:', fallbackError);
-        throw new Error(`All AI providers failed: ${fallbackError.message}`);
+        const [result1, result2] = await Promise.all([
+          callOpenAI(reviewer1Prompt),
+          callGeminiWithFallback(reviewer2Prompt)
+        ]);
+        
+        reviewer1Result = result1;
+        reviewer2Result = result2;
+        console.log('Successfully using OpenAI + Gemini fallback strategy');
+        
+        // Check if Gemini failed and use OpenAI backup
+        if (reviewer2Result.reviewer.includes('Error') && reviewer2Result.confidence === 0) {
+          console.log('Gemini unavailable in fallback, using OpenAI for both reviewers');
+          reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Backup)');
+        }
+        
+      } catch (secondError) {
+        console.error('Primary fallback failed, attempting OpenRouter + OpenAI strategy:', secondError);
+        
+        // Fallback 2: OpenRouter (GPT-4o-mini) + OpenAI
+        try {
+          const [result1, result2] = await Promise.all([
+            callOpenRouter(reviewer1Prompt, 'openai/gpt-4o-mini', 'OpenRouter (GPT-4o-mini Conservative)'),
+            callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Direct)')
+          ]);
+          
+          reviewer1Result = result1;
+          reviewer2Result = result2;
+          useOpenRouterMode = true;
+          console.log('Successfully using OpenRouter (GPT-4o-mini) + OpenAI hybrid strategy');
+          
+        } catch (finalError) {
+          console.error('All hybrid strategies failed, using OpenAI only:', finalError);
+          
+          // Last resort: OpenAI only with both prompts
+          reviewer1Result = await callOpenAI(reviewer1Prompt);
+          reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Final Backup)');
+          console.log('Successfully switched to OpenAI-only mode');
+        }
       }
     }
 
     console.log('Reviewer 1 result:', reviewer1Result);
     console.log('Reviewer 2 result:', reviewer2Result);
-    console.log('Using hybrid mode:', useHybridMode);
+    console.log('Using OpenRouter mode:', useOpenRouterMode);
 
     // Enhanced agreement evaluation with error handling
     const bothReviewersValid = reviewer1Result.confidence > 0 && reviewer2Result.confidence > 0;
@@ -798,4 +832,179 @@ async function callGeminiWithFallback(prompt: string): Promise<AIReviewResult> {
       reviewer: 'Google Gemini (Error)'
     };
   }
+}
+
+async function callOpenRouter(prompt: string, model: string = 'anthropic/claude-3-haiku', reviewerName?: string): Promise<AIReviewResult> {
+  const apiKey = openRouterApiKey;
+  if (!apiKey) throw new Error('OpenRouter API key not configured');
+
+  // Default reviewer name based on model
+  const defaultReviewerName = reviewerName || `OpenRouter (${model})`;
+  
+  // Enhanced prompt with strict JSON instructions for OpenRouter
+  const jsonPrompt = `${prompt}
+
+CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdown, no extra text):
+{
+  "recommendation": "include|exclude",
+  "confidence": 0.xx,
+  "picott_assessment": {
+    "population": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "intervention": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "comparator": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "outcome": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "timeframe": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "study_design": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"}
+  },
+  "criteria_assessment": {
+    "inclusion_criteria": [
+      {"criterion": "criterion text", "status": "met|not_met|unclear", "evidence": "Direct quote or rationale"}
+    ],
+    "exclusion_criteria": [
+      {"criterion": "criterion text", "status": "violated|not_violated|unclear", "evidence": "Direct quote or rationale"}
+    ]
+  },
+  "reasoning": "Final decision reasoning based on the above assessment and why you chose include/exclude despite any uncertainties"
+}
+
+The recommendation must be exactly one of: include, exclude
+The confidence must be a number between 0.0 and 1.0 based on your actual certainty
+The reasoning must be a string explaining your decision and addressing any uncertainties.`;
+
+  const maxRetries = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`OpenRouter attempt ${attempt}/${maxRetries} with model: ${model}`);
+
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://lovable.dev',
+          'X-Title': 'AI Literature Screening Tool'
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert systematic review researcher. Always respond with valid JSON in the exact format requested.'
+            },
+            { 
+              role: 'user', 
+              content: jsonPrompt 
+            }
+          ],
+          max_tokens: 1000,
+          temperature: 0.1
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorDetails;
+        try {
+          errorDetails = JSON.parse(errorText);
+        } catch {
+          errorDetails = { message: errorText };
+        }
+        
+        lastError = new Error(`OpenRouter API error (${response.status}): ${JSON.stringify(errorDetails)}`);
+        console.error(`OpenRouter attempt ${attempt} failed:`, {
+          status: response.status,
+          error: errorDetails,
+          attempt: attempt,
+          maxRetries: maxRetries,
+          model: model
+        });
+        
+        if (attempt === maxRetries) throw lastError;
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        continue;
+      }
+
+      const data = await response.json();
+      console.log('OpenRouter raw response:', JSON.stringify(data, null, 2));
+
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error('Invalid OpenRouter response structure');
+      }
+
+      const content = data.choices[0].message.content;
+      
+      // Clean the content - remove markdown formatting if present
+      let cleanContent = content.trim();
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      let result;
+      try {
+        result = JSON.parse(cleanContent);
+      } catch (parseError) {
+        console.error('JSON parse error from OpenRouter:', parseError, 'Content:', cleanContent);
+        
+        // Try to extract JSON from text if parsing fails
+        const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            result = JSON.parse(jsonMatch[0]);
+          } catch (secondParseError) {
+            throw new Error(`Could not parse JSON from OpenRouter response: ${parseError.message}`);
+          }
+        } else {
+          throw new Error(`No valid JSON found in OpenRouter response: ${cleanContent}`);
+        }
+      }
+
+      // Validate the result structure
+      if (!result.recommendation || typeof result.confidence !== 'number' || !result.reasoning) {
+        throw new Error('Missing required fields in OpenRouter response');
+      }
+
+      // Ensure confidence is between 0 and 1
+      result.confidence = Math.max(0, Math.min(1, result.confidence));
+
+      // Ensure recommendation is valid
+      if (!['include', 'exclude'].includes(result.recommendation)) {
+        console.warn('Invalid recommendation from OpenRouter:', result.recommendation, 'defaulting to exclude');
+        result.recommendation = 'exclude';
+      }
+
+      return {
+        recommendation: result.recommendation,
+        confidence: result.confidence,
+        reasoning: result.reasoning,
+        reviewer: defaultReviewerName,
+        picott_assessment: result.picott_assessment,
+        criteria_assessment: result.criteria_assessment
+      };
+
+    } catch (error) {
+      lastError = error;
+      console.error(`OpenRouter attempt ${attempt} failed:`, error.message);
+      
+      if (attempt === maxRetries) {
+        // Return fallback response
+        console.error('All OpenRouter attempts failed, returning fallback response');
+        return {
+          recommendation: 'exclude',
+          confidence: 0.0,
+          reasoning: `Error occurred during OpenRouter screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
+          reviewer: `${defaultReviewerName} (Error)`
+        };
+      }
+      
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+
+  // This should never be reached, but just in case
+  throw lastError;
 }
