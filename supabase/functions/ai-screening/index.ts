@@ -100,12 +100,22 @@ ${criteria.exclusionCriteria?.filter(c => c.trim()).map(c => `• ${c}`).join('\
 
 You MUST make a definitive decision: either INCLUDE or EXCLUDE. "Maybe" is NOT an option.
 
-ANALYSIS REQUIREMENTS:
-1. First, assess each PICOTT element and criteria against the abstract
-2. For each element, provide either:
-   - Direct quote from abstract if explicitly stated
-   - Your rationale if inferred or absent
-3. Then provide your final reasoning and decision
+CRITICAL ANALYSIS REQUIREMENTS - STRUCTURED PICOTT ASSESSMENT:
+
+Your output MUST BEGIN with a systematic structured analysis of each PICOTT element. For EACH letter of PICOTT, you must provide:
+
+1. **DIRECT SOURCE QUOTE**: Extract the exact text from the abstract that relates to this element (use "Not mentioned" if absent)
+2. **YOUR ASSESSMENT/REASONING**: Explain WHY that quote (or absence) means the criteria is fulfilled or not fulfilled
+
+PICOTT ANALYSIS FORMAT REQUIRED:
+• **P (Population)**: Quote: "[exact quote or 'Not mentioned']" → Assessment: "[Your reasoning about whether this meets population criteria]"
+• **I (Intervention)**: Quote: "[exact quote or 'Not mentioned']" → Assessment: "[Your reasoning about whether this meets intervention criteria]" 
+• **C (Comparator)**: Quote: "[exact quote or 'Not mentioned']" → Assessment: "[Your reasoning about whether this meets comparator criteria]"
+• **O (Outcome)**: Quote: "[exact quote or 'Not mentioned']" → Assessment: "[Your reasoning about whether this meets outcome criteria]"
+• **T (Timeframe)**: Quote: "[exact quote or 'Not mentioned']" → Assessment: "[Your reasoning about whether this meets timeframe criteria]"
+• **T (Study Type)**: Quote: "[exact quote or 'Not mentioned']" → Assessment: "[Your reasoning about whether this meets study design criteria]"
+
+THEN assess inclusion/exclusion criteria systematically with the same quote → assessment approach.
 
 Use thorough analysis, reflection, and reasoning to determine if the abstract is more likely to meet the inclusion criteria or not. Even with uncertainty, make the best decision based on available evidence.
 
