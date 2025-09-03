@@ -291,7 +291,8 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
               status: { type: "string", enum: ["present", "absent", "unclear"] },
               evidence: { type: "string" }
             },
-            required: ["status", "evidence"]
+            required: ["status", "evidence"],
+            additionalProperties: false
           },
           intervention: {
             type: "object",
@@ -299,7 +300,8 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
               status: { type: "string", enum: ["present", "absent", "unclear"] },
               evidence: { type: "string" }
             },
-            required: ["status", "evidence"]
+            required: ["status", "evidence"],
+            additionalProperties: false
           },
           comparator: {
             type: "object",
@@ -307,7 +309,8 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
               status: { type: "string", enum: ["present", "absent", "unclear"] },
               evidence: { type: "string" }
             },
-            required: ["status", "evidence"]
+            required: ["status", "evidence"],
+            additionalProperties: false
           },
           outcome: {
             type: "object",
@@ -315,7 +318,8 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
               status: { type: "string", enum: ["present", "absent", "unclear"] },
               evidence: { type: "string" }
             },
-            required: ["status", "evidence"]
+            required: ["status", "evidence"],
+            additionalProperties: false
           },
           timeframe: {
             type: "object",
@@ -323,7 +327,8 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
               status: { type: "string", enum: ["present", "absent", "unclear"] },
               evidence: { type: "string" }
             },
-            required: ["status", "evidence"]
+            required: ["status", "evidence"],
+            additionalProperties: false
           },
           study_design: {
             type: "object",
@@ -331,10 +336,12 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
               status: { type: "string", enum: ["present", "absent", "unclear"] },
               evidence: { type: "string" }
             },
-            required: ["status", "evidence"]
+            required: ["status", "evidence"],
+            additionalProperties: false
           }
         },
-        required: ["population", "intervention", "comparator", "outcome", "timeframe", "study_design"]
+        required: ["population", "intervention", "comparator", "outcome", "timeframe", "study_design"],
+        additionalProperties: false
       },
       criteria_assessment: {
         type: "object",
@@ -348,7 +355,8 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
                 status: { type: "string", enum: ["met", "not_met", "unclear"] },
                 evidence: { type: "string" }
               },
-              required: ["criterion", "status", "evidence"]
+              required: ["criterion", "status", "evidence"],
+              additionalProperties: false
             }
           },
           exclusion_criteria: {
@@ -360,11 +368,13 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
                 status: { type: "string", enum: ["violated", "not_violated", "unclear"] },
                 evidence: { type: "string" }
               },
-              required: ["criterion", "status", "evidence"]
+              required: ["criterion", "status", "evidence"],
+              additionalProperties: false
             }
           }
         },
-        required: ["inclusion_criteria", "exclusion_criteria"]
+        required: ["inclusion_criteria", "exclusion_criteria"],
+        additionalProperties: false
       },
       reasoning: {
         type: "string"

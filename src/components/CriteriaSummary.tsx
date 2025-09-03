@@ -129,42 +129,48 @@ const CriteriaSummary: React.FC<CriteriaSummaryProps> = ({ criteria, onEdit }) =
         </div>
 
         {/* Inclusion Criteria */}
-        {hasInclusionCriteria && (
-          <div>
-            <span className="font-medium text-sm text-green-700 dark:text-green-400">
-              Inclusion Criteria:
-            </span>
-            <ul className="text-sm text-muted-foreground mt-1 space-y-1">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Target className="w-4 h-4 text-success" />
+            <span className="font-medium text-sm">Inclusion Criteria</span>
+          </div>
+          {hasInclusionCriteria ? (
+            <ul className="text-sm text-muted-foreground space-y-1">
               {criteria.inclusion_criteria
                 ?.filter(c => c.trim())
                 .map((criterion, index) => (
                   <li key={index} className="flex items-start gap-2">
-                    <span className="text-green-600 mt-0.5">•</span>
+                    <span className="text-success mt-0.5">•</span>
                     <span>{criterion}</span>
                   </li>
                 ))}
             </ul>
-          </div>
-        )}
+          ) : (
+            <span className="text-sm text-muted-foreground">Not specified</span>
+          )}
+        </div>
 
         {/* Exclusion Criteria */}
-        {hasExclusionCriteria && (
-          <div>
-            <span className="font-medium text-sm text-red-700 dark:text-red-400">
-              Exclusion Criteria:
-            </span>
-            <ul className="text-sm text-muted-foreground mt-1 space-y-1">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Target className="w-4 h-4 text-destructive" />
+            <span className="font-medium text-sm">Exclusion Criteria</span>
+          </div>
+          {hasExclusionCriteria ? (
+            <ul className="text-sm text-muted-foreground space-y-1">
               {criteria.exclusion_criteria
                 ?.filter(c => c.trim())
                 .map((criterion, index) => (
                   <li key={index} className="flex items-start gap-2">
-                    <span className="text-red-600 mt-0.5">•</span>
+                    <span className="text-destructive mt-0.5">•</span>
                     <span>{criterion}</span>
                   </li>
                 ))}
             </ul>
-          </div>
-        )}
+          ) : (
+            <span className="text-sm text-muted-foreground">Not specified</span>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
