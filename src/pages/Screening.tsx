@@ -153,22 +153,9 @@ const ScreeningDashboard = () => {
       if (error) throw error;
       setSelectedProject(data);
       
-      // Check if criteria are embedded in the project or load from separate table
-      if (data.population || data.intervention || data.outcome || data.comparator) {
-        // Use embedded criteria from project
-        const embeddedCriteria = {
-          population: data.population,
-          intervention: data.intervention,
-          comparator: data.comparator,
-          outcome: data.outcome,
-          studyDesigns: data.study_designs || []
-        };
-        console.log('Using embedded criteria:', embeddedCriteria);
-        setCriteriaData(embeddedCriteria);
-      } else {
-        // Load criteria from separate table
-        await loadCriteriaData(projectId);
-      }
+      // Always load complete criteria from screening_criteria table
+      // This ensures we get inclusion/exclusion criteria along with PICO elements
+      await loadCriteriaData(projectId);
     } catch (error) {
       console.error('Error loading project:', error);
     }
