@@ -33,7 +33,7 @@ interface ScreeningRequest {
 }
 
 interface AIReviewResult {
-  recommendation: 'include' | 'exclude' | 'maybe';
+  recommendation: 'include' | 'exclude';
   confidence: number;
   reasoning: string;
   reviewer: string;
@@ -81,30 +81,37 @@ ${criteria.inclusionCriteria?.filter(c => c.trim()).map(c => `• ${c}`).join('\
 EXCLUSION CRITERIA:
 ${criteria.exclusionCriteria?.filter(c => c.trim()).map(c => `• ${c}`).join('\n') || '• Not specified'}
 
+You MUST make a definitive decision: either INCLUDE or EXCLUDE. "Maybe" is NOT an option.
+
+Use thorough analysis, reflection, and reasoning to determine if the abstract is more likely to meet the inclusion criteria or not. Even with uncertainty, make the best decision based on available evidence.
+
 Provide your response in this exact JSON format:
 {
-  "recommendation": "include|exclude|maybe",
+  "recommendation": "include|exclude",
   "confidence": 0.xx,
-  "reasoning": "Detailed explanation of your decision"
+  "reasoning": "Detailed explanation of your decision and why you chose include/exclude despite any uncertainties"
 }
 
-IMPORTANT CONFIDENCE SCORING:
-- confidence: A decimal between 0.0 and 1.0 representing your actual certainty
-- 0.0-0.3: Very uncertain, significant ambiguity or missing information
-- 0.4-0.6: Moderate confidence, some clear indicators but potential concerns
-- 0.7-0.9: High confidence, clear evidence supporting decision
-- 1.0: Complete certainty, unambiguous decision
+DECISION GUIDELINES:
+- If the study clearly meets most criteria → INCLUDE
+- If the study clearly fails key criteria → EXCLUDE  
+- If borderline/uncertain → Use your best judgment based on which is more likely
+- Lower confidence scores (0.3-0.6) are acceptable for difficult decisions
+- Always explain your reasoning, especially for borderline cases
 
-DO NOT use default values like 0.95 or 0.85. Provide your actual confidence level based on the evidence.
+CONFIDENCE SCORING:
+- 0.3-0.5: Difficult decision with significant uncertainty but best judgment made
+- 0.6-0.8: Reasonable confidence with some minor concerns
+- 0.9-1.0: High confidence, clear evidence supporting decision
 `;
 
     const reviewer1Prompt = `${basePrompt}
 
-AI Reviewer 1 - Focus on strict inclusion criteria adherence. Be conservative and ensure all criteria are clearly met before recommending inclusion.`;
+AI Reviewer 1 - CONSERVATIVE APPROACH: Apply strict criteria adherence. If there's significant doubt about meeting inclusion criteria, lean toward EXCLUDE. Only recommend INCLUDE when criteria are clearly met.`;
 
     const reviewer2Prompt = `${basePrompt}
 
-AI Reviewer 2 - Focus on comprehensive evidence evaluation. Consider the broader scientific value and potential relevance even if some criteria are borderline.`;
+AI Reviewer 2 - COMPREHENSIVE APPROACH: Consider broader scientific value and potential relevance. If the study could contribute valuable insights despite minor criteria gaps, lean toward INCLUDE. Only recommend EXCLUDE when clearly irrelevant.`;
 
     // Parallel API calls to both AI providers
     const [reviewer1Result, reviewer2Result] = await Promise.all([
@@ -115,18 +122,35 @@ AI Reviewer 2 - Focus on comprehensive evidence evaluation. Consider the broader
     console.log('Reviewer 1 result:', reviewer1Result);
     console.log('Reviewer 2 result:', reviewer2Result);
 
-    // Evaluate agreement
+    // Evaluate agreement and resolve conflicts
     const agreement = reviewer1Result.recommendation === reviewer2Result.recommendation;
-    const finalDecision = agreement ? reviewer1Result.recommendation : 'maybe';
-    const averageConfidence = agreement ? (reviewer1Result.confidence + reviewer2Result.confidence) / 2 : Math.max(reviewer1Result.confidence, reviewer2Result.confidence);
+    let finalDecision: string;
+    let averageConfidence: number;
+    
+    if (agreement) {
+      finalDecision = reviewer1Result.recommendation;
+      averageConfidence = (reviewer1Result.confidence + reviewer2Result.confidence) / 2;
+    } else {
+      // Conflict resolution: Use the decision with higher confidence
+      if (reviewer1Result.confidence > reviewer2Result.confidence) {
+        finalDecision = reviewer1Result.recommendation;
+        averageConfidence = reviewer1Result.confidence;
+      } else if (reviewer2Result.confidence > reviewer1Result.confidence) {
+        finalDecision = reviewer2Result.recommendation;
+        averageConfidence = reviewer2Result.confidence;
+      } else {
+        // Equal confidence: Default to conservative approach (exclude)
+        finalDecision = 'exclude';
+        averageConfidence = Math.max(reviewer1Result.confidence, reviewer2Result.confidence);
+      }
+    }
 
     // Map decisions to database-compatible values
     const mapDecision = (decision: string) => {
       switch (decision) {
         case 'include': return 'included';
         case 'exclude': return 'excluded';
-        case 'maybe': return 'uncertain';
-        default: return 'uncertain';
+        default: return 'excluded'; // Default to excluded for safety
       }
     };
 
@@ -211,7 +235,7 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
     properties: {
       recommendation: {
         type: "string",
-        enum: ["include", "exclude", "maybe"]
+        enum: ["include", "exclude"]
       },
       confidence: {
         type: "number",
@@ -300,9 +324,9 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
       result.confidence = Math.max(0, Math.min(1, result.confidence));
 
       // Ensure recommendation is valid
-      if (!['include', 'exclude', 'maybe'].includes(result.recommendation)) {
-        console.warn('Invalid recommendation from OpenAI:', result.recommendation, 'defaulting to maybe');
-        result.recommendation = 'maybe';
+      if (!['include', 'exclude'].includes(result.recommendation)) {
+        console.warn('Invalid recommendation from OpenAI:', result.recommendation, 'defaulting to exclude');
+        result.recommendation = 'exclude';
       }
 
       return {
@@ -320,9 +344,9 @@ async function callOpenAI(prompt: string): Promise<AIReviewResult> {
         // Return fallback response
         console.error('All OpenAI attempts failed, returning fallback response');
         return {
-          recommendation: 'maybe',
+          recommendation: 'exclude',
           confidence: 0.0,
-          reasoning: `Error occurred during OpenAI screening: ${error.message}. Manual review required.`,
+          reasoning: `Error occurred during OpenAI screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
           reviewer: 'OpenAI GPT-4o (Error)'
         };
       }
@@ -346,17 +370,19 @@ async function callGemini(prompt: string): Promise<AIReviewResult> {
   // Enhanced prompt with strict JSON instructions
   const jsonPrompt = `${prompt}
 
+You MUST make a definitive decision: either INCLUDE or EXCLUDE. "Maybe" is NOT an option.
+
 CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdown, no extra text):
 {
-  "recommendation": "include|exclude|maybe",
+  "recommendation": "include|exclude",
   "confidence": 0.xx,
-  "reasoning": "Your detailed explanation here"
+  "reasoning": "Your detailed explanation here including why you chose include/exclude despite any uncertainties"
 }
 
-The recommendation must be exactly one of: include, exclude, maybe
+The recommendation must be exactly one of: include, exclude
 The confidence must be a number between 0.0 and 1.0 based on your actual certainty
-The reasoning must be a string explaining your decision.
-DO NOT use default confidence values - provide your real assessment.`;
+The reasoning must be a string explaining your decision and addressing any uncertainties.
+Use analysis and reasoning to make the best decision possible even with incomplete information.`;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -449,9 +475,9 @@ DO NOT use default confidence values - provide your real assessment.`;
       result.confidence = Math.max(0, Math.min(1, result.confidence));
 
       // Ensure recommendation is valid
-      if (!['include', 'exclude', 'maybe'].includes(result.recommendation)) {
-        console.warn('Invalid recommendation from Gemini:', result.recommendation, 'defaulting to maybe');
-        result.recommendation = 'maybe';
+      if (!['include', 'exclude'].includes(result.recommendation)) {
+        console.warn('Invalid recommendation from Gemini:', result.recommendation, 'defaulting to exclude');
+        result.recommendation = 'exclude';
       }
 
       return {
@@ -469,9 +495,9 @@ DO NOT use default confidence values - provide your real assessment.`;
         // Return fallback response
         console.error('All Gemini attempts failed, returning fallback response');
         return {
-          recommendation: 'maybe',
+          recommendation: 'exclude',
           confidence: 0.0,
-          reasoning: `Error occurred during Gemini screening: ${error.message}. Manual review required.`,
+          reasoning: `Error occurred during Gemini screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
           reviewer: 'Google Gemini (Error)'
         };
       }
