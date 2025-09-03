@@ -51,11 +51,14 @@ const Screening = () => {
   } = useEnhancedScreening();
 
   useEffect(() => {
+    console.log('🚀 Initializing Screening component with project:', projectData?.id);
     if (projectData?.id) {
+      console.log('📂 Loading project from context:', projectData.id);
       loadReferences();
       loadProject();
     } else {
       // If no project in context, try to load the most recent project
+      console.log('📂 Loading most recent project');
       loadMostRecentProject();
     }
   }, [projectData]);
@@ -163,6 +166,7 @@ const Screening = () => {
 
   const loadCriteriaData = async (projectId: string) => {
     try {
+      console.log('🔍 Loading criteria for project:', projectId);
       const { data: criteria, error } = await supabase
         .from('screening_criteria')
         .select('*')
@@ -174,7 +178,12 @@ const Screening = () => {
       }
 
       if (criteria) {
+        console.log('✅ Criteria loaded from DB:', criteria);
+        console.log('📋 Inclusion criteria:', criteria.inclusion_criteria);
+        console.log('📋 Exclusion criteria:', criteria.exclusion_criteria);
         setCriteriaData(criteria);
+      } else {
+        console.log('❌ No criteria found for project:', projectId);
       }
     } catch (error) {
       console.error('Error loading criteria:', error);
@@ -336,12 +345,22 @@ const Screening = () => {
         </div>
 
         {/* Criteria Summary */}
-        {criteriaData && (
+        {criteriaData ? (
           <div className="mb-8">
             <CriteriaSummary 
               criteria={criteriaData} 
               onEdit={() => navigate('/criteria')}
             />
+          </div>
+        ) : (
+          <div className="mb-8">
+            <Card className="bg-muted/50">
+              <CardContent className="pt-6">
+                <div className="text-center text-muted-foreground">
+                  <p>Loading screening criteria...</p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
