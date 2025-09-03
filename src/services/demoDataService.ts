@@ -201,6 +201,18 @@ export const loadDemoData = async () => {
 
     return {
       project,
+      criteria: {
+        population: demoCriteria.population,
+        intervention: demoCriteria.intervention,
+        comparator: demoCriteria.comparator,
+        outcome: demoCriteria.outcome,
+        study_designs: demoCriteria.study_designs,
+        timeframe_start: demoCriteria.timeframe_start,
+        timeframe_end: demoCriteria.timeframe_end,
+        timeframe_description: demoCriteria.timeframe_description,
+        inclusion_criteria: demoCriteria.inclusion_criteria,
+        exclusion_criteria: demoCriteria.exclusion_criteria
+      },
       referencesCount: demoReferences.length
     };
 
