@@ -117,6 +117,15 @@ PICOTT ANALYSIS FORMAT REQUIRED:
 
 THEN assess inclusion/exclusion criteria systematically with the same quote → assessment approach.
 
+AFTER completing your PICOTT analysis and criteria assessment, you MUST provide an:
+
+**OVERALL REASONING SUMMARY**: 
+Write a concise narrative paragraph (2-4 sentences) that synthesizes the key aspects that led to your include/exclude decision. This should address:
+- Which PICOTT elements were strongest/weakest for this abstract
+- Which inclusion criteria were most clearly met or failed  
+- The decisive factors that tipped your decision toward include or exclude
+- Any significant gaps or strengths in the evidence
+
 Use thorough analysis, reflection, and reasoning to determine if the abstract is more likely to meet the inclusion criteria or not. Even with uncertainty, make the best decision based on available evidence.
 
 Provide your response in this exact JSON format:
