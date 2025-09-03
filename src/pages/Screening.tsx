@@ -162,6 +162,7 @@ const ScreeningDashboard = () => {
   };
 
   const loadCriteriaData = async (projectId: string) => {
+    console.log('DEBUG: Loading criteria for project:', projectId);
     try {
       const { data: criteria, error } = await supabase
         .from('screening_criteria')
@@ -169,12 +170,18 @@ const ScreeningDashboard = () => {
         .eq('project_id', projectId)
         .single();
 
+      console.log('DEBUG: Criteria query result:', { criteria, error });
+
       if (error && error.code !== 'PGRST116') {
+        console.error('DEBUG: Criteria loading error:', error);
         throw error;
       }
 
       if (criteria) {
+        console.log('DEBUG: Setting criteria data:', criteria);
         setCriteriaData(criteria);
+      } else {
+        console.log('DEBUG: No criteria found for project');
       }
     } catch (error) {
       console.error('Error loading criteria:', error);
