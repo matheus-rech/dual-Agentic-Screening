@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
+import { generateObject } from 'https://esm.sh/ai@5.1.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,6 +14,7 @@ const supabase = createClient(
 );
 
 const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
+const vercelAIToken = Deno.env.get('VERCEL_AI_GATEWAY_TOKEN');
 
 interface ScreeningRequest {
   referenceId: string;
@@ -174,79 +176,91 @@ AI Reviewer 1 - CONSERVATIVE APPROACH: Apply strict criteria adherence. If there
 
 AI Reviewer 2 - COMPREHENSIVE APPROACH: Consider broader scientific value and potential relevance. If the study could contribute valuable insights despite minor criteria gaps, lean toward INCLUDE. Only recommend EXCLUDE when clearly irrelevant.`;
 
-    // Enhanced AI provider selection with OpenRouter integration
+    // Hybrid AI provider selection with Vercel AI Gateway as primary
     let reviewer1Result: AIReviewResult;
     let reviewer2Result: AIReviewResult;
-    let useOpenRouterMode = false;
+    let primaryProvider = 'none';
 
     try {
-      // Primary strategy: Use OpenRouter with Claude for conservative reviewer (more careful analysis)
-      // and Gemini for comprehensive reviewer
-      const [result1, result2] = await Promise.all([
-        callOpenRouter(reviewer1Prompt, 'anthropic/claude-3-haiku', 'OpenRouter (Claude-3-Haiku Conservative)'),
-        callGeminiWithFallback(reviewer2Prompt)
-      ]);
-      
-      reviewer1Result = result1;
-      reviewer2Result = result2;
-      useOpenRouterMode = true;
-      console.log('Successfully using OpenRouter (Claude) + Gemini strategy');
-      
-      // Check if Gemini failed and needs OpenAI fallback
-      if (reviewer2Result.reviewer.includes('Error') && reviewer2Result.confidence === 0) {
-        console.log('Gemini unavailable, switching to OpenAI for reviewer 2');
-        reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Fallback)');
-      }
-      
-    } catch (error) {
-      console.error('OpenRouter + Gemini strategy failed, trying OpenAI + Gemini:', error);
-      
-      // Fallback 1: Try original OpenAI + Gemini approach
-      try {
+      // PRIMARY: Vercel AI Gateway (Claude + GPT) with load balancing
+      if (vercelAIToken) {
+        console.log('Attempting Vercel AI Gateway + Gemini hybrid strategy');
         const [result1, result2] = await Promise.all([
-          callOpenAI(reviewer1Prompt),
+          callVercelAI(reviewer1Prompt, 'claude-3-5-sonnet-20241022', 'Vercel AI Gateway (Claude Conservative)'),
           callGeminiWithFallback(reviewer2Prompt)
         ]);
         
         reviewer1Result = result1;
         reviewer2Result = result2;
-        console.log('Successfully using OpenAI + Gemini fallback strategy');
+        primaryProvider = 'vercel-ai-gateway';
+        console.log('Successfully using Vercel AI Gateway + Gemini strategy');
         
-        // Check if Gemini failed and use OpenAI backup
+        // Check if Gemini failed and use Vercel AI Gateway GPT fallback
         if (reviewer2Result.reviewer.includes('Error') && reviewer2Result.confidence === 0) {
-          console.log('Gemini unavailable in fallback, using OpenAI for both reviewers');
-          reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Backup)');
+          console.log('Gemini unavailable, switching to Vercel AI Gateway GPT for reviewer 2');
+          reviewer2Result = await callVercelAI(reviewer2Prompt, 'gpt-4o-mini', 'Vercel AI Gateway (GPT Comprehensive)');
+        }
+      } else {
+        throw new Error('Vercel AI Gateway token not configured');
+      }
+      
+    } catch (error) {
+      console.error('Vercel AI Gateway strategy failed, trying OpenRouter + Gemini:', error);
+      
+      // FALLBACK 1: OpenRouter (Claude) + Gemini approach
+      try {
+        const [result1, result2] = await Promise.all([
+          callOpenRouter(reviewer1Prompt, 'anthropic/claude-3-haiku', 'OpenRouter (Claude-3-Haiku Conservative)'),
+          callGeminiWithFallback(reviewer2Prompt)
+        ]);
+        
+        reviewer1Result = result1;
+        reviewer2Result = result2;
+        primaryProvider = 'openrouter';
+        console.log('Successfully using OpenRouter + Gemini fallback strategy');
+        
+        // Check if Gemini failed and needs OpenAI fallback
+        if (reviewer2Result.reviewer.includes('Error') && reviewer2Result.confidence === 0) {
+          console.log('Gemini unavailable, switching to OpenAI for reviewer 2');
+          reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Fallback)');
         }
         
       } catch (secondError) {
-        console.error('Primary fallback failed, attempting OpenRouter + OpenAI strategy:', secondError);
+        console.error('OpenRouter fallback failed, trying OpenAI + Gemini:', secondError);
         
-        // Fallback 2: OpenRouter (GPT-4o-mini) + OpenAI
+        // FALLBACK 2: Original OpenAI + Gemini approach
         try {
           const [result1, result2] = await Promise.all([
-            callOpenRouter(reviewer1Prompt, 'openai/gpt-4o-mini', 'OpenRouter (GPT-4o-mini Conservative)'),
-            callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Direct)')
+            callOpenAI(reviewer1Prompt),
+            callGeminiWithFallback(reviewer2Prompt)
           ]);
           
           reviewer1Result = result1;
           reviewer2Result = result2;
-          useOpenRouterMode = true;
-          console.log('Successfully using OpenRouter (GPT-4o-mini) + OpenAI hybrid strategy');
+          primaryProvider = 'openai';
+          console.log('Successfully using OpenAI + Gemini fallback strategy');
           
-        } catch (finalError) {
-          console.error('All hybrid strategies failed, using OpenAI only:', finalError);
+          // Check if Gemini failed and use OpenAI backup
+          if (reviewer2Result.reviewer.includes('Error') && reviewer2Result.confidence === 0) {
+            console.log('Gemini unavailable in fallback, using OpenAI for both reviewers');
+            reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Backup)');
+          }
           
-          // Last resort: OpenAI only with both prompts
+        } catch (thirdError) {
+          console.error('OpenAI + Gemini fallback failed, attempting final OpenAI only:', thirdError);
+          
+          // FALLBACK 3: OpenAI only (last resort)
           reviewer1Result = await callOpenAI(reviewer1Prompt);
           reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Final Backup)');
-          console.log('Successfully switched to OpenAI-only mode');
+          primaryProvider = 'openai-only';
+          console.log('Successfully switched to OpenAI-only emergency mode');
         }
       }
     }
 
     console.log('Reviewer 1 result:', reviewer1Result);
     console.log('Reviewer 2 result:', reviewer2Result);
-    console.log('Using OpenRouter mode:', useOpenRouterMode);
+    console.log('Primary provider used:', primaryProvider);
 
     // Enhanced agreement evaluation with error handling
     const bothReviewersValid = reviewer1Result.confidence > 0 && reviewer2Result.confidence > 0;
@@ -996,6 +1010,259 @@ The reasoning must be a string explaining your decision and addressing any uncer
           recommendation: 'exclude',
           confidence: 0.0,
           reasoning: `Error occurred during OpenRouter screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
+          reviewer: `${defaultReviewerName} (Error)`
+        };
+      }
+      
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+
+  // This should never be reached, but just in case
+  throw lastError;
+}
+
+async function callVercelAI(prompt: string, model: string = 'claude-3-5-sonnet-20241022', reviewerName?: string): Promise<AIReviewResult> {
+  const apiToken = vercelAIToken;
+  if (!apiToken) throw new Error('Vercel AI Gateway token not configured');
+
+  // Default reviewer name based on model
+  const defaultReviewerName = reviewerName || `Vercel AI Gateway (${model})`;
+  
+  // Define the structured output schema
+  const responseSchema = {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      recommendation: {
+        type: "string",
+        enum: ["include", "exclude"]
+      },
+      confidence: {
+        type: "number",
+        minimum: 0,
+        maximum: 1
+      },
+      picott_assessment: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          population: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              status: { type: "string", enum: ["present", "absent", "unclear"] },
+              evidence: { type: "string" }
+            },
+            required: ["status", "evidence"]
+          },
+          intervention: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              status: { type: "string", enum: ["present", "absent", "unclear"] },
+              evidence: { type: "string" }
+            },
+            required: ["status", "evidence"]
+          },
+          comparator: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              status: { type: "string", enum: ["present", "absent", "unclear"] },
+              evidence: { type: "string" }
+            },
+            required: ["status", "evidence"]
+          },
+          outcome: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              status: { type: "string", enum: ["present", "absent", "unclear"] },
+              evidence: { type: "string" }
+            },
+            required: ["status", "evidence"]
+          },
+          timeframe: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              status: { type: "string", enum: ["present", "absent", "unclear"] },
+              evidence: { type: "string" }
+            },
+            required: ["status", "evidence"]
+          },
+          study_design: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              status: { type: "string", enum: ["present", "absent", "unclear"] },
+              evidence: { type: "string" }
+            },
+            required: ["status", "evidence"]
+          }
+        },
+        required: ["population", "intervention", "comparator", "outcome", "timeframe", "study_design"]
+      },
+      criteria_assessment: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          inclusion_criteria: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                criterion: { type: "string" },
+                status: { type: "string", enum: ["met", "not_met", "unclear"] },
+                evidence: { type: "string" }
+              },
+              required: ["criterion", "status", "evidence"]
+            }
+          },
+          exclusion_criteria: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                criterion: { type: "string" },
+                status: { type: "string", enum: ["violated", "not_violated", "unclear"] },
+                evidence: { type: "string" }
+              },
+              required: ["criterion", "status", "evidence"]
+            }
+          }
+        },
+        required: ["inclusion_criteria", "exclusion_criteria"]
+      },
+      reasoning: {
+        type: "string"
+      }
+    },
+    required: ["recommendation", "confidence", "picott_assessment", "criteria_assessment", "reasoning"]
+  };
+
+  const maxRetries = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Vercel AI Gateway attempt ${attempt}/${maxRetries} with model: ${model}`);
+
+      const response = await fetch('https://api.vercel.com/v1/ai/gateway/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert systematic review researcher. Always respond with valid JSON in the exact format requested.'
+            },
+            { 
+              role: 'user', 
+              content: prompt 
+            }
+          ],
+          max_tokens: 1000,
+          temperature: 0.1,
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "screening_result",
+              schema: responseSchema,
+              strict: true
+            }
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorDetails;
+        try {
+          errorDetails = JSON.parse(errorText);
+        } catch {
+          errorDetails = { message: errorText };
+        }
+        
+        lastError = new Error(`Vercel AI Gateway error (${response.status}): ${JSON.stringify(errorDetails)}`);
+        console.error(`Vercel AI Gateway attempt ${attempt} failed:`, {
+          status: response.status,
+          error: errorDetails,
+          attempt: attempt,
+          maxRetries: maxRetries,
+          model: model
+        });
+        
+        // For schema errors or auth errors, don't retry
+        if (response.status === 400 || response.status === 401 || response.status === 403) {
+          console.error('Vercel AI Gateway config error - not retrying:', errorDetails);
+          throw lastError;
+        }
+        
+        if (attempt === maxRetries) throw lastError;
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        continue;
+      }
+
+      const data = await response.json();
+      console.log('Vercel AI Gateway raw response:', JSON.stringify(data, null, 2));
+
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error('Invalid Vercel AI Gateway response structure');
+      }
+
+      const content = data.choices[0].message.content;
+      let result;
+
+      try {
+        result = JSON.parse(content);
+      } catch (parseError) {
+        console.error('JSON parse error from Vercel AI Gateway:', parseError, 'Content:', content);
+        throw new Error(`Invalid JSON from Vercel AI Gateway: ${parseError.message}`);
+      }
+
+      // Validate the result structure
+      if (!result.recommendation || typeof result.confidence !== 'number' || !result.reasoning) {
+        throw new Error('Missing required fields in Vercel AI Gateway response');
+      }
+
+      // Ensure confidence is between 0 and 1
+      result.confidence = Math.max(0, Math.min(1, result.confidence));
+
+      // Ensure recommendation is valid
+      if (!['include', 'exclude'].includes(result.recommendation)) {
+        console.warn('Invalid recommendation from Vercel AI Gateway:', result.recommendation, 'defaulting to exclude');
+        result.recommendation = 'exclude';
+      }
+
+      return {
+        recommendation: result.recommendation,
+        confidence: result.confidence,
+        reasoning: result.reasoning,
+        reviewer: defaultReviewerName,
+        picott_assessment: result.picott_assessment,
+        criteria_assessment: result.criteria_assessment
+      };
+
+    } catch (error) {
+      lastError = error;
+      console.error(`Vercel AI Gateway attempt ${attempt} failed:`, error.message);
+      
+      if (attempt === maxRetries) {
+        // Return fallback response
+        console.error('All Vercel AI Gateway attempts failed, returning fallback response');
+        return {
+          recommendation: 'exclude',
+          confidence: 0.0,
+          reasoning: `Error occurred during Vercel AI Gateway screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
           reviewer: `${defaultReviewerName} (Error)`
         };
       }
