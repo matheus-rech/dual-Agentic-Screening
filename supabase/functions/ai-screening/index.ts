@@ -157,7 +157,7 @@ You are an expert systematic review researcher conducting a literature screening
 REFERENCE TO SCREEN:
 Title: ${reference.title}
 Abstract: ${reference.abstract}
-Authors: ${reference.authors?.join(', ') || 'Not provided'}
+Authors: ${Array.isArray(reference.authors) ? reference.authors.join(', ') : (reference.authors || 'Not provided')}
 Journal: ${reference.journal || 'Not provided'}
 Year: ${reference.year || 'Not provided'}
 DOI: ${reference.doi || 'Not provided'}
@@ -167,13 +167,13 @@ Population: ${criteria.population}
 Intervention: ${criteria.intervention}
 Comparator: ${criteria.comparator}
 Outcomes: ${criteria.outcomes}
-Study Designs: ${criteria.studyDesigns?.join(', ') || 'Not specified'}
+Study Designs: ${Array.isArray(criteria.studyDesigns) ? criteria.studyDesigns.join(', ') : (criteria.studyDesigns || 'Not specified')}
 
 Inclusion Criteria:
-${criteria.inclusionCriteria?.map((c: string, i: number) => `${i+1}. ${c}`).join('\n') || 'None specified'}
+${Array.isArray(criteria.inclusionCriteria) ? criteria.inclusionCriteria.map((c: string, i: number) => `${i+1}. ${c}`).join('\n') : (criteria.inclusionCriteria || 'None specified')}
 
 Exclusion Criteria:  
-${criteria.exclusionCriteria?.map((c: string, i: number) => `${i+1}. ${c}`).join('\n') || 'None specified'}
+${Array.isArray(criteria.exclusionCriteria) ? criteria.exclusionCriteria.map((c: string, i: number) => `${i+1}. ${c}`).join('\n') : (criteria.exclusionCriteria || 'None specified')}
 
 CRITICAL TASK: You must provide a comprehensive PICOTT assessment with EXACT QUOTES from the abstract where evidence is found.
 
