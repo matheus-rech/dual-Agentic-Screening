@@ -252,62 +252,62 @@ AI Reviewer 2 - COMPREHENSIVE APPROACH: Consider broader scientific value and po
     let primaryProvider = 'none';
 
     try {
-      console.log('Attempting model-agnostic AI screening with comprehensive provider fallbacks...');
+      console.log('Attempting model-agnostic AI screening with free/open-source provider priority...');
       
-      // Try Vercel AI Gateway first (most reliable)
+      // Start with free providers first, then paid fallbacks
       try {
-        reviewer1Result = await callVercelAI(reviewer1Prompt, 'claude-3-5-sonnet-20241022', 'Vercel AI Gateway (Claude Conservative)');
-        reviewer2Result = await callVercelAI(reviewer2Prompt, 'gpt-4o-mini', 'Vercel AI Gateway (GPT Comprehensive)');
-        primaryProvider = 'vercel-ai-gateway';
-        console.log('✅ Vercel AI Gateway successful');
-      } catch (vercelError) {
-        console.warn('⚠️ Vercel AI Gateway failed:', vercelError.message);
+        reviewer1Result = await callGroq(reviewer1Prompt, 'Groq Llama (Conservative)');
+        reviewer2Result = await callGroq(reviewer2Prompt, 'Groq Llama (Comprehensive)');
+        primaryProvider = 'groq';
+        console.log('✅ Groq successful');
+      } catch (groqError) {
+        console.warn('⚠️ Groq failed:', groqError.message);
         
-        // Fallback to Anthropic Claude
+        // Fallback to OpenRouter free models
         try {
-          reviewer1Result = await callAnthropic(reviewer1Prompt, 'Reviewer A');
-          reviewer2Result = await callAnthropic(reviewer2Prompt, 'Reviewer B');
-          primaryProvider = 'anthropic';
-          console.log('✅ Anthropic Claude fallback successful');
-        } catch (anthropicError) {
-          console.warn('⚠️ Anthropic failed:', anthropicError.message);
+          reviewer1Result = await callOpenRouter(reviewer1Prompt, 'meta-llama/llama-3.2-3b-instruct:free', 'OpenRouter Free (Conservative)');
+          reviewer2Result = await callOpenRouter(reviewer2Prompt, 'mistralai/mistral-7b-instruct:free', 'OpenRouter Free (Comprehensive)');
+          primaryProvider = 'openrouter-free';
+          console.log('✅ OpenRouter free models successful');
+        } catch (openRouterError) {
+          console.warn('⚠️ OpenRouter failed:', openRouterError.message);
           
-          // Fallback to Groq
+          // Fallback to Hugging Face free
           try {
-            reviewer1Result = await callGroq(reviewer1Prompt, 'Reviewer A');
-            reviewer2Result = await callGroq(reviewer2Prompt, 'Reviewer B');
-            primaryProvider = 'groq';
-            console.log('✅ Groq fallback successful');
-          } catch (groqError) {
-            console.warn('⚠️ Groq failed:', groqError.message);
+            reviewer1Result = await callHuggingFace(reviewer1Prompt, 'HuggingFace (Conservative)');
+            reviewer2Result = await callHuggingFace(reviewer2Prompt, 'HuggingFace (Comprehensive)');
+            primaryProvider = 'huggingface';
+            console.log('✅ Hugging Face successful');
+          } catch (hfError) {
+            console.warn('⚠️ Hugging Face failed:', hfError.message);
             
-            // Fallback to OpenRouter
+            // Fallback to Gemini free tier
             try {
-              reviewer1Result = await callOpenRouter(reviewer1Prompt, 'meta-llama/llama-3.2-3b-instruct:free', 'OpenRouter (Conservative)');
-              reviewer2Result = await callOpenRouter(reviewer2Prompt, 'anthropic/claude-3-haiku', 'OpenRouter (Comprehensive)');
-              primaryProvider = 'openrouter';
-              console.log('✅ OpenRouter fallback successful');
-            } catch (openRouterError) {
-              console.warn('⚠️ OpenRouter failed:', openRouterError.message);
+              reviewer1Result = await callGeminiWithFallback(reviewer1Prompt);
+              reviewer2Result = await callGeminiWithFallback(reviewer2Prompt);
+              primaryProvider = 'gemini';
+              console.log('✅ Gemini fallback successful');
+            } catch (geminiError) {
+              console.warn('⚠️ Gemini failed:', geminiError.message);
               
-              // Fallback to Hugging Face
+              // Fallback to Anthropic (paid)
               try {
-                reviewer1Result = await callHuggingFace(reviewer1Prompt, 'Reviewer A');
-                reviewer2Result = await callHuggingFace(reviewer2Prompt, 'Reviewer B');
-                primaryProvider = 'huggingface';
-                console.log('✅ Hugging Face fallback successful');
-              } catch (hfError) {
-                console.warn('⚠️ Hugging Face failed:', hfError.message);
+                reviewer1Result = await callAnthropic(reviewer1Prompt, 'Anthropic Claude (Conservative)');
+                reviewer2Result = await callAnthropic(reviewer2Prompt, 'Anthropic Claude (Comprehensive)');
+                primaryProvider = 'anthropic';
+                console.log('✅ Anthropic fallback successful');
+              } catch (anthropicError) {
+                console.warn('⚠️ Anthropic failed:', anthropicError.message);
                 
-                // Final fallback to OpenAI
+                // Final fallback to OpenAI (paid)
                 try {
-                  reviewer1Result = await callOpenAI(reviewer1Prompt, 'OpenAI GPT-4o (Conservative)');
-                  reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Comprehensive)');
+                  reviewer1Result = await callOpenAI(reviewer1Prompt, 'OpenAI GPT (Conservative)');
+                  reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT (Comprehensive)');
                   primaryProvider = 'openai';
                   console.log('✅ OpenAI final fallback successful');
                 } catch (openAIError) {
                   console.error('❌ All providers failed');
-                  throw new Error(`All AI providers failed: Vercel: ${vercelError.message}, Anthropic: ${anthropicError.message}, Groq: ${groqError.message}, OpenRouter: ${openRouterError.message}, HuggingFace: ${hfError.message}, OpenAI: ${openAIError.message}`);
+                  throw new Error(`All AI providers failed: Groq: ${groqError.message}, OpenRouter: ${openRouterError.message}, HuggingFace: ${hfError.message}, Gemini: ${geminiError.message}, Anthropic: ${anthropicError.message}, OpenAI: ${openAIError.message}`);
                 }
               }
             }
@@ -649,7 +649,7 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'llama-3.1-70b-versatile',
+          model: 'llama-3.2-3b-preview',
           messages: [
             {
               role: 'system',
@@ -807,7 +807,7 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
     try {
       console.log(`Hugging Face attempt ${attempt}/${maxRetries}`);
 
-      const response = await fetch('https://api-inference.huggingface.co/models/microsoft/DialoGPT-large', {
+      const response = await fetch('https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
@@ -818,7 +818,13 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
           parameters: {
             max_new_tokens: 1000,
             temperature: 0.1,
-            return_full_text: false
+            return_full_text: false,
+            do_sample: true,
+            top_p: 0.9
+          },
+          options: {
+            wait_for_model: true,
+            use_cache: false
           }
         }),
       });
@@ -1395,7 +1401,7 @@ async function callGeminiWithFallback(prompt: string): Promise<AIReviewResult> {
   }
 }
 
-async function callOpenRouter(prompt: string, model: string = 'anthropic/claude-3-haiku', reviewerName?: string): Promise<AIReviewResult> {
+async function callOpenRouter(prompt: string, model: string = 'meta-llama/llama-3.2-3b-instruct:free', reviewerName?: string): Promise<AIReviewResult> {
   const apiKey = openRouterApiKey;
   if (!apiKey) throw new Error('OpenRouter API key not configured');
 
@@ -1699,7 +1705,7 @@ async function callVercelAI(prompt: string, model: string = 'claude-3-5-sonnet-2
     try {
       console.log(`Vercel AI Gateway attempt ${attempt}/${maxRetries} with model: ${model}`);
 
-      const response = await fetch('https://api.vercel.com/v1/ai/gateway/chat/completions', {
+      const response = await fetch('https://gateway.ai.cloudflare.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiToken}`,
