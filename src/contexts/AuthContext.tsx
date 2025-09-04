@@ -59,21 +59,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signOut = async () => {
     try {
-      // Clean up auth state
+      // Log security event
+      console.log('User sign-out initiated', { userId: user?.id, timestamp: new Date().toISOString() });
+      
+      // Clean up auth state aggressively for security
       Object.keys(localStorage).forEach((key) => {
         if (key.startsWith('supabase.auth.') || key.includes('sb-')) {
           localStorage.removeItem(key);
         }
       });
       
-      // Attempt global sign out
-      await supabase.auth.signOut({ scope: 'global' });
+      // Clear session storage as well
+      Object.keys(sessionStorage).forEach((key) => {
+        if (key.startsWith('supabase.auth.') || key.includes('sb-')) {
+          sessionStorage.removeItem(key);
+        }
+      });
+      
+      // Attempt global sign out with timeout
+      const signOutPromise = supabase.auth.signOut({ scope: 'global' });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Sign out timeout')), 5000)
+      );
+      
+      await Promise.race([signOutPromise, timeoutPromise]);
       
       // Force page reload for clean state
       window.location.href = '/auth';
     } catch (error) {
       console.error('Sign out error:', error);
-      // Force redirect even if sign out fails
+      // Force redirect even if sign out fails for security
       window.location.href = '/auth';
     }
   };

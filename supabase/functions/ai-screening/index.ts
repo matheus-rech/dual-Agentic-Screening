@@ -5,7 +5,72 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Content-Security-Policy': "default-src 'self'",
+  'X-Frame-Options': 'DENY',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin'
 };
+
+// Input validation and sanitization
+function validateAndSanitizeInput(data: any) {
+  if (!data || typeof data !== 'object') {
+    throw new Error('Invalid request data');
+  }
+
+  // Validate required fields
+  const required = ['references', 'criteria', 'userId', 'projectId'];
+  for (const field of required) {
+    if (!data[field]) {
+      throw new Error(`Missing required field: ${field}`);
+    }
+  }
+
+  // Sanitize text inputs
+  const sanitize = (text: string) => {
+    if (!text || typeof text !== 'string') return '';
+    return text
+      .trim()
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
+      .substring(0, 50000); // Limit length
+  };
+
+  // Validate and sanitize references
+  if (!Array.isArray(data.references) || data.references.length === 0) {
+    throw new Error('References must be a non-empty array');
+  }
+
+  if (data.references.length > 1000) {
+    throw new Error('Too many references (max 1000)');
+  }
+
+  data.references = data.references.map((ref: any, index: number) => {
+    if (!ref || typeof ref !== 'object') {
+      throw new Error(`Invalid reference at index ${index}`);
+    }
+
+    return {
+      id: ref.id?.toString() || `ref_${index}`,
+      title: sanitize(ref.title || ''),
+      abstract: sanitize(ref.abstract || ''),
+      authors: sanitize(ref.authors || ''),
+      year: parseInt(ref.year) || new Date().getFullYear(),
+      journal: sanitize(ref.journal || ''),
+      doi: sanitize(ref.doi || ''),
+      url: ref.url ? new URL(ref.url).toString() : '' // Validate URL
+    };
+  });
+
+  // Validate user and project IDs (UUIDs)
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(data.userId)) {
+    throw new Error('Invalid user ID format');
+  }
+  if (!uuidRegex.test(data.projectId)) {
+    throw new Error('Invalid project ID format');
+  }
+
+  return data;
+}
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
@@ -65,9 +130,21 @@ serve(async (req) => {
   }
 
   try {
-    const { referenceId, reference, criteria, projectId }: ScreeningRequest = await req.json();
+    // Parse and validate input with security checks
+    const rawData = await req.json();
+    const validatedData = validateAndSanitizeInput(rawData);
+    
+    const { referenceId, reference, criteria, projectId }: ScreeningRequest = validatedData;
     
     console.log('Starting dual AI screening for reference:', referenceId);
+    
+    // Security logging
+    console.log('Security validation passed for request:', {
+      referenceId,
+      userId: validatedData.userId,
+      projectId,
+      referenceCount: validatedData.references?.length || 'N/A'
+    });
 
     // Create specialized prompts for each reviewer
     const basePrompt = `
