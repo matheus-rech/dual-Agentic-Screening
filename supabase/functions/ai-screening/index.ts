@@ -71,6 +71,9 @@ const supabase = createClient(
 
 const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
 const vercelAIToken = Deno.env.get('VERCEL_AI_GATEWAY_TOKEN');
+const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+const groqApiKey = Deno.env.get('GROQ_API_KEY');
+const huggingFaceApiKey = Deno.env.get('HUGGINGFACE_API_KEY');
 
 interface ScreeningRequest {
   referenceId: string;
@@ -243,86 +246,77 @@ AI Reviewer 1 - CONSERVATIVE APPROACH: Apply strict criteria adherence. If there
 
 AI Reviewer 2 - COMPREHENSIVE APPROACH: Consider broader scientific value and potential relevance. If the study could contribute valuable insights despite minor criteria gaps, lean toward INCLUDE. Only recommend EXCLUDE when clearly irrelevant.`;
 
-    // Hybrid AI provider selection with Vercel AI Gateway as primary
+    // Enhanced hybrid AI provider selection with comprehensive fallback strategy
     let reviewer1Result: AIReviewResult;
     let reviewer2Result: AIReviewResult;
     let primaryProvider = 'none';
 
     try {
-      // PRIMARY: Vercel AI Gateway (Claude + GPT) with load balancing
-      if (vercelAIToken) {
-        console.log('Attempting Vercel AI Gateway + Gemini hybrid strategy');
-        const [result1, result2] = await Promise.all([
-          callVercelAI(reviewer1Prompt, 'claude-3-5-sonnet-20241022', 'Vercel AI Gateway (Claude Conservative)'),
-          callGeminiWithFallback(reviewer2Prompt)
-        ]);
-        
-        reviewer1Result = result1;
-        reviewer2Result = result2;
-        primaryProvider = 'vercel-ai-gateway';
-        console.log('Successfully using Vercel AI Gateway + Gemini strategy');
-        
-        // Check if Gemini failed and use Vercel AI Gateway GPT fallback
-        if (reviewer2Result.reviewer.includes('Error') && reviewer2Result.confidence === 0) {
-          console.log('Gemini unavailable, switching to Vercel AI Gateway GPT for reviewer 2');
-          reviewer2Result = await callVercelAI(reviewer2Prompt, 'gpt-4o-mini', 'Vercel AI Gateway (GPT Comprehensive)');
-        }
-      } else {
-        throw new Error('Vercel AI Gateway token not configured');
-      }
+      console.log('Attempting model-agnostic AI screening with comprehensive provider fallbacks...');
       
-    } catch (error) {
-      console.error('Vercel AI Gateway strategy failed, trying OpenRouter + Gemini:', error);
-      
-      // FALLBACK 1: OpenRouter (Claude) + Gemini approach
+      // Try Vercel AI Gateway first (most reliable)
       try {
-        const [result1, result2] = await Promise.all([
-          callOpenRouter(reviewer1Prompt, 'anthropic/claude-3-haiku', 'OpenRouter (Claude-3-Haiku Conservative)'),
-          callGeminiWithFallback(reviewer2Prompt)
-        ]);
+        reviewer1Result = await callVercelAI(reviewer1Prompt, 'claude-3-5-sonnet-20241022', 'Vercel AI Gateway (Claude Conservative)');
+        reviewer2Result = await callVercelAI(reviewer2Prompt, 'gpt-4o-mini', 'Vercel AI Gateway (GPT Comprehensive)');
+        primaryProvider = 'vercel-ai-gateway';
+        console.log('✅ Vercel AI Gateway successful');
+      } catch (vercelError) {
+        console.warn('⚠️ Vercel AI Gateway failed:', vercelError.message);
         
-        reviewer1Result = result1;
-        reviewer2Result = result2;
-        primaryProvider = 'openrouter';
-        console.log('Successfully using OpenRouter + Gemini fallback strategy');
-        
-        // Check if Gemini failed and needs OpenAI fallback
-        if (reviewer2Result.reviewer.includes('Error') && reviewer2Result.confidence === 0) {
-          console.log('Gemini unavailable, switching to OpenAI for reviewer 2');
-          reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Fallback)');
-        }
-        
-      } catch (secondError) {
-        console.error('OpenRouter fallback failed, trying OpenAI + Gemini:', secondError);
-        
-        // FALLBACK 2: Original OpenAI + Gemini approach
+        // Fallback to Anthropic Claude
         try {
-          const [result1, result2] = await Promise.all([
-            callOpenAI(reviewer1Prompt),
-            callGeminiWithFallback(reviewer2Prompt)
-          ]);
+          reviewer1Result = await callAnthropic(reviewer1Prompt, 'Reviewer A');
+          reviewer2Result = await callAnthropic(reviewer2Prompt, 'Reviewer B');
+          primaryProvider = 'anthropic';
+          console.log('✅ Anthropic Claude fallback successful');
+        } catch (anthropicError) {
+          console.warn('⚠️ Anthropic failed:', anthropicError.message);
           
-          reviewer1Result = result1;
-          reviewer2Result = result2;
-          primaryProvider = 'openai';
-          console.log('Successfully using OpenAI + Gemini fallback strategy');
-          
-          // Check if Gemini failed and use OpenAI backup
-          if (reviewer2Result.reviewer.includes('Error') && reviewer2Result.confidence === 0) {
-            console.log('Gemini unavailable in fallback, using OpenAI for both reviewers');
-            reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Backup)');
+          // Fallback to Groq
+          try {
+            reviewer1Result = await callGroq(reviewer1Prompt, 'Reviewer A');
+            reviewer2Result = await callGroq(reviewer2Prompt, 'Reviewer B');
+            primaryProvider = 'groq';
+            console.log('✅ Groq fallback successful');
+          } catch (groqError) {
+            console.warn('⚠️ Groq failed:', groqError.message);
+            
+            // Fallback to OpenRouter
+            try {
+              reviewer1Result = await callOpenRouter(reviewer1Prompt, 'meta-llama/llama-3.2-3b-instruct:free', 'OpenRouter (Conservative)');
+              reviewer2Result = await callOpenRouter(reviewer2Prompt, 'anthropic/claude-3-haiku', 'OpenRouter (Comprehensive)');
+              primaryProvider = 'openrouter';
+              console.log('✅ OpenRouter fallback successful');
+            } catch (openRouterError) {
+              console.warn('⚠️ OpenRouter failed:', openRouterError.message);
+              
+              // Fallback to Hugging Face
+              try {
+                reviewer1Result = await callHuggingFace(reviewer1Prompt, 'Reviewer A');
+                reviewer2Result = await callHuggingFace(reviewer2Prompt, 'Reviewer B');
+                primaryProvider = 'huggingface';
+                console.log('✅ Hugging Face fallback successful');
+              } catch (hfError) {
+                console.warn('⚠️ Hugging Face failed:', hfError.message);
+                
+                // Final fallback to OpenAI
+                try {
+                  reviewer1Result = await callOpenAI(reviewer1Prompt, 'OpenAI GPT-4o (Conservative)');
+                  reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Comprehensive)');
+                  primaryProvider = 'openai';
+                  console.log('✅ OpenAI final fallback successful');
+                } catch (openAIError) {
+                  console.error('❌ All providers failed');
+                  throw new Error(`All AI providers failed: Vercel: ${vercelError.message}, Anthropic: ${anthropicError.message}, Groq: ${groqError.message}, OpenRouter: ${openRouterError.message}, HuggingFace: ${hfError.message}, OpenAI: ${openAIError.message}`);
+                }
+              }
+            }
           }
-          
-        } catch (thirdError) {
-          console.error('OpenAI + Gemini fallback failed, attempting final OpenAI only:', thirdError);
-          
-          // FALLBACK 3: OpenAI only (last resort)
-          reviewer1Result = await callOpenAI(reviewer1Prompt);
-          reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT-4o (Final Backup)');
-          primaryProvider = 'openai-only';
-          console.log('Successfully switched to OpenAI-only emergency mode');
         }
       }
+    } catch (error) {
+      console.error('AI screening failed:', error);
+      throw error;
     }
 
     console.log('Reviewer 1 result:', reviewer1Result);
@@ -448,6 +442,492 @@ AI Reviewer 2 - COMPREHENSIVE APPROACH: Consider broader scientific value and po
     });
   }
 });
+
+async function callAnthropic(prompt: string, reviewerName: string = 'Anthropic Claude'): Promise<AIReviewResult> {
+  const apiKey = anthropicApiKey;
+  if (!apiKey) throw new Error('Anthropic API key not configured');
+
+  // Enhanced prompt with strict JSON instructions for Anthropic
+  const jsonPrompt = `${prompt}
+
+CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdown, no extra text):
+{
+  "recommendation": "include|exclude",
+  "confidence": 0.xx,
+  "picott_assessment": {
+    "population": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "intervention": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "comparator": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "outcome": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "timeframe": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "study_design": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"}
+  },
+  "criteria_assessment": {
+    "inclusion_criteria": [
+      {"criterion": "criterion text", "status": "met|not_met|unclear", "evidence": "Direct quote or rationale"}
+    ],
+    "exclusion_criteria": [
+      {"criterion": "criterion text", "status": "violated|not_violated|unclear", "evidence": "Direct quote or rationale"}
+    ]
+  },
+  "reasoning": "Final decision reasoning based on the above assessment and why you chose include/exclude despite any uncertainties"
+}`;
+
+  const maxRetries = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Anthropic attempt ${attempt}/${maxRetries}`);
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'x-api-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-3-5-haiku-20241022',
+          max_tokens: 1000,
+          temperature: 0.1,
+          messages: [
+            { 
+              role: 'user', 
+              content: jsonPrompt 
+            }
+          ]
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorDetails;
+        try {
+          errorDetails = JSON.parse(errorText);
+        } catch {
+          errorDetails = { message: errorText };
+        }
+        
+        lastError = new Error(`Anthropic API error (${response.status}): ${JSON.stringify(errorDetails)}`);
+        console.error(`Anthropic attempt ${attempt} failed:`, {
+          status: response.status,
+          error: errorDetails,
+          attempt: attempt,
+          maxRetries: maxRetries
+        });
+        
+        if (attempt === maxRetries) throw lastError;
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        continue;
+      }
+
+      const data = await response.json();
+      console.log('Anthropic raw response:', JSON.stringify(data, null, 2));
+
+      if (!data.content || !data.content[0] || !data.content[0].text) {
+        throw new Error('Invalid Anthropic response structure');
+      }
+
+      const content = data.content[0].text;
+      
+      // Clean the content - remove markdown formatting if present
+      let cleanContent = content.trim();
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      let result;
+      try {
+        result = JSON.parse(cleanContent);
+      } catch (parseError) {
+        console.error('JSON parse error from Anthropic:', parseError, 'Content:', cleanContent);
+        
+        // Try to extract JSON from text if parsing fails
+        const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            result = JSON.parse(jsonMatch[0]);
+          } catch (secondParseError) {
+            throw new Error(`Could not parse JSON from Anthropic response: ${parseError.message}`);
+          }
+        } else {
+          throw new Error(`No valid JSON found in Anthropic response: ${cleanContent}`);
+        }
+      }
+
+      // Validate the result structure
+      if (!result.recommendation || typeof result.confidence !== 'number' || !result.reasoning) {
+        throw new Error('Missing required fields in Anthropic response');
+      }
+
+      // Ensure confidence is between 0 and 1
+      result.confidence = Math.max(0, Math.min(1, result.confidence));
+
+      // Ensure recommendation is valid
+      if (!['include', 'exclude'].includes(result.recommendation)) {
+        console.warn('Invalid recommendation from Anthropic:', result.recommendation, 'defaulting to exclude');
+        result.recommendation = 'exclude';
+      }
+
+      return {
+        recommendation: result.recommendation,
+        confidence: result.confidence,
+        reasoning: result.reasoning,
+        reviewer: reviewerName,
+        picott_assessment: result.picott_assessment,
+        criteria_assessment: result.criteria_assessment
+      };
+
+    } catch (error) {
+      lastError = error;
+      console.error(`Anthropic attempt ${attempt} failed:`, error.message);
+      
+      if (attempt === maxRetries) {
+        // Return fallback response
+        console.error('All Anthropic attempts failed, returning fallback response');
+        return {
+          recommendation: 'exclude',
+          confidence: 0.0,
+          reasoning: `Error occurred during Anthropic screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
+          reviewer: `${reviewerName} (Error)`
+        };
+      }
+      
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+
+  // This should never be reached, but just in case
+  throw lastError;
+}
+
+async function callGroq(prompt: string, reviewerName: string = 'Groq'): Promise<AIReviewResult> {
+  const apiKey = groqApiKey;
+  if (!apiKey) throw new Error('Groq API key not configured');
+
+  // Enhanced prompt with strict JSON instructions for Groq
+  const jsonPrompt = `${prompt}
+
+CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdown, no extra text):
+{
+  "recommendation": "include|exclude",
+  "confidence": 0.xx,
+  "picott_assessment": {
+    "population": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "intervention": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "comparator": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "outcome": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "timeframe": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "study_design": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"}
+  },
+  "criteria_assessment": {
+    "inclusion_criteria": [
+      {"criterion": "criterion text", "status": "met|not_met|unclear", "evidence": "Direct quote or rationale"}
+    ],
+    "exclusion_criteria": [
+      {"criterion": "criterion text", "status": "violated|not_violated|unclear", "evidence": "Direct quote or rationale"}
+    ]
+  },
+  "reasoning": "Final decision reasoning based on the above assessment and why you chose include/exclude despite any uncertainties"
+}`;
+
+  const maxRetries = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Groq attempt ${attempt}/${maxRetries}`);
+
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert systematic review researcher. Always respond with valid JSON in the exact format requested.'
+            },
+            { 
+              role: 'user', 
+              content: jsonPrompt 
+            }
+          ],
+          max_tokens: 1000,
+          temperature: 0.1
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorDetails;
+        try {
+          errorDetails = JSON.parse(errorText);
+        } catch {
+          errorDetails = { message: errorText };
+        }
+        
+        lastError = new Error(`Groq API error (${response.status}): ${JSON.stringify(errorDetails)}`);
+        console.error(`Groq attempt ${attempt} failed:`, {
+          status: response.status,
+          error: errorDetails,
+          attempt: attempt,
+          maxRetries: maxRetries
+        });
+        
+        if (attempt === maxRetries) throw lastError;
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        continue;
+      }
+
+      const data = await response.json();
+      console.log('Groq raw response:', JSON.stringify(data, null, 2));
+
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error('Invalid Groq response structure');
+      }
+
+      const content = data.choices[0].message.content;
+      
+      // Clean the content - remove markdown formatting if present
+      let cleanContent = content.trim();
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      let result;
+      try {
+        result = JSON.parse(cleanContent);
+      } catch (parseError) {
+        console.error('JSON parse error from Groq:', parseError, 'Content:', cleanContent);
+        
+        // Try to extract JSON from text if parsing fails
+        const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            result = JSON.parse(jsonMatch[0]);
+          } catch (secondParseError) {
+            throw new Error(`Could not parse JSON from Groq response: ${parseError.message}`);
+          }
+        } else {
+          throw new Error(`No valid JSON found in Groq response: ${cleanContent}`);
+        }
+      }
+
+      // Validate the result structure
+      if (!result.recommendation || typeof result.confidence !== 'number' || !result.reasoning) {
+        throw new Error('Missing required fields in Groq response');
+      }
+
+      // Ensure confidence is between 0 and 1
+      result.confidence = Math.max(0, Math.min(1, result.confidence));
+
+      // Ensure recommendation is valid
+      if (!['include', 'exclude'].includes(result.recommendation)) {
+        console.warn('Invalid recommendation from Groq:', result.recommendation, 'defaulting to exclude');
+        result.recommendation = 'exclude';
+      }
+
+      return {
+        recommendation: result.recommendation,
+        confidence: result.confidence,
+        reasoning: result.reasoning,
+        reviewer: reviewerName,
+        picott_assessment: result.picott_assessment,
+        criteria_assessment: result.criteria_assessment
+      };
+
+    } catch (error) {
+      lastError = error;
+      console.error(`Groq attempt ${attempt} failed:`, error.message);
+      
+      if (attempt === maxRetries) {
+        // Return fallback response
+        console.error('All Groq attempts failed, returning fallback response');
+        return {
+          recommendation: 'exclude',
+          confidence: 0.0,
+          reasoning: `Error occurred during Groq screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
+          reviewer: `${reviewerName} (Error)`
+        };
+      }
+      
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+
+  // This should never be reached, but just in case
+  throw lastError;
+}
+
+async function callHuggingFace(prompt: string, reviewerName: string = 'Hugging Face'): Promise<AIReviewResult> {
+  const apiKey = huggingFaceApiKey;
+  if (!apiKey) throw new Error('Hugging Face API key not configured');
+
+  // Enhanced prompt with strict JSON instructions for Hugging Face
+  const jsonPrompt = `${prompt}
+
+CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdown, no extra text):
+{
+  "recommendation": "include|exclude",
+  "confidence": 0.xx,
+  "picott_assessment": {
+    "population": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "intervention": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "comparator": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "outcome": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "timeframe": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
+    "study_design": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"}
+  },
+  "criteria_assessment": {
+    "inclusion_criteria": [
+      {"criterion": "criterion text", "status": "met|not_met|unclear", "evidence": "Direct quote or rationale"}
+    ],
+    "exclusion_criteria": [
+      {"criterion": "criterion text", "status": "violated|not_violated|unclear", "evidence": "Direct quote or rationale"}
+    ]
+  },
+  "reasoning": "Final decision reasoning based on the above assessment and why you chose include/exclude despite any uncertainties"
+}`;
+
+  const maxRetries = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Hugging Face attempt ${attempt}/${maxRetries}`);
+
+      const response = await fetch('https://api-inference.huggingface.co/models/microsoft/DialoGPT-large', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          inputs: jsonPrompt,
+          parameters: {
+            max_new_tokens: 1000,
+            temperature: 0.1,
+            return_full_text: false
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorDetails;
+        try {
+          errorDetails = JSON.parse(errorText);
+        } catch {
+          errorDetails = { message: errorText };
+        }
+        
+        lastError = new Error(`Hugging Face API error (${response.status}): ${JSON.stringify(errorDetails)}`);
+        console.error(`Hugging Face attempt ${attempt} failed:`, {
+          status: response.status,
+          error: errorDetails,
+          attempt: attempt,
+          maxRetries: maxRetries
+        });
+        
+        if (attempt === maxRetries) throw lastError;
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        continue;
+      }
+
+      const data = await response.json();
+      console.log('Hugging Face raw response:', JSON.stringify(data, null, 2));
+
+      let content = '';
+      if (Array.isArray(data) && data.length > 0 && data[0].generated_text) {
+        content = data[0].generated_text;
+      } else {
+        throw new Error('Invalid Hugging Face response structure');
+      }
+      
+      // Clean the content - remove markdown formatting if present
+      let cleanContent = content.trim();
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      let result;
+      try {
+        result = JSON.parse(cleanContent);
+      } catch (parseError) {
+        console.error('JSON parse error from Hugging Face:', parseError, 'Content:', cleanContent);
+        
+        // Try to extract JSON from text if parsing fails
+        const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            result = JSON.parse(jsonMatch[0]);
+          } catch (secondParseError) {
+            throw new Error(`Could not parse JSON from Hugging Face response: ${parseError.message}`);
+          }
+        } else {
+          throw new Error(`No valid JSON found in Hugging Face response: ${cleanContent}`);
+        }
+      }
+
+      // Validate the result structure
+      if (!result.recommendation || typeof result.confidence !== 'number' || !result.reasoning) {
+        throw new Error('Missing required fields in Hugging Face response');
+      }
+
+      // Ensure confidence is between 0 and 1
+      result.confidence = Math.max(0, Math.min(1, result.confidence));
+
+      // Ensure recommendation is valid
+      if (!['include', 'exclude'].includes(result.recommendation)) {
+        console.warn('Invalid recommendation from Hugging Face:', result.recommendation, 'defaulting to exclude');
+        result.recommendation = 'exclude';
+      }
+
+      return {
+        recommendation: result.recommendation,
+        confidence: result.confidence,
+        reasoning: result.reasoning,
+        reviewer: reviewerName,
+        picott_assessment: result.picott_assessment,
+        criteria_assessment: result.criteria_assessment
+      };
+
+    } catch (error) {
+      lastError = error;
+      console.error(`Hugging Face attempt ${attempt} failed:`, error.message);
+      
+      if (attempt === maxRetries) {
+        // Return fallback response
+        console.error('All Hugging Face attempts failed, returning fallback response');
+        return {
+          recommendation: 'exclude',
+          confidence: 0.0,
+          reasoning: `Error occurred during Hugging Face screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
+          reviewer: `${reviewerName} (Error)`
+        };
+      }
+      
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+
+  // This should never be reached, but just in case
+  throw lastError;
+}
 
 async function callOpenAI(prompt: string, reviewerName: string = 'OpenAI GPT-4o'): Promise<AIReviewResult> {
   const apiKey = Deno.env.get('OPENAI_API_KEY');
