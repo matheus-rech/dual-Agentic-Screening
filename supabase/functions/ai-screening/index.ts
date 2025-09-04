@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
+import { z } from 'https://esm.sh/zod@3.25.76';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -246,70 +247,118 @@ AI Reviewer 1 - CONSERVATIVE APPROACH: Apply strict criteria adherence. If there
 
 AI Reviewer 2 - COMPREHENSIVE APPROACH: Consider broader scientific value and potential relevance. If the study could contribute valuable insights despite minor criteria gaps, lean toward INCLUDE. Only recommend EXCLUDE when clearly irrelevant.`;
 
-    // Enhanced hybrid AI provider selection with comprehensive fallback strategy
+    // Enhanced reasoning-first AI provider selection with fallback strategy  
     let reviewer1Result: AIReviewResult;
     let reviewer2Result: AIReviewResult;
     let primaryProvider = 'none';
 
-    try {
-      console.log('Attempting model-agnostic AI screening with free/open-source provider priority...');
-      
-      // Start with free providers first, then paid fallbacks
+    // Zod schema for structured output validation
+    const AIReviewResultSchema = z.object({
+      recommendation: z.enum(['include', 'exclude']),
+      confidence: z.number().min(0).max(1),
+      reasoning: z.string().min(10),
+      reviewer: z.string().optional(),
+      picott_assessment: z.object({
+        population: z.object({
+          status: z.enum(['present', 'absent', 'unclear']),
+          evidence: z.string()
+        }),
+        intervention: z.object({
+          status: z.enum(['present', 'absent', 'unclear']),
+          evidence: z.string()
+        }),
+        comparator: z.object({
+          status: z.enum(['present', 'absent', 'unclear']),
+          evidence: z.string()
+        }),
+        outcome: z.object({
+          status: z.enum(['present', 'absent', 'unclear']),
+          evidence: z.string()
+        }),
+        timeframe: z.object({
+          status: z.enum(['present', 'absent', 'unclear']),
+          evidence: z.string()
+        }),
+        study_design: z.object({
+          status: z.enum(['present', 'absent', 'unclear']),
+          evidence: z.string()
+        })
+      }).optional(),
+      criteria_assessment: z.object({
+        inclusion_criteria: z.array(z.object({
+          criterion: z.string(),
+          status: z.enum(['met', 'not_met', 'unclear']),
+          evidence: z.string()
+        })),
+        exclusion_criteria: z.array(z.object({
+          criterion: z.string(),
+          status: z.enum(['violated', 'not_violated', 'unclear']),
+          evidence: z.string()
+        }))
+      }).optional()
+    })
+
+    // Validate AI response with enhanced error handling
+    const validateAIResponse = (data: any, providerName: string): AIReviewResult => {
       try {
-        reviewer1Result = await callGroq(reviewer1Prompt, 'Groq Llama (Conservative)');
-        reviewer2Result = await callGroq(reviewer2Prompt, 'Groq Llama (Comprehensive)');
-        primaryProvider = 'groq';
-        console.log('✅ Groq successful');
-      } catch (groqError) {
-        console.warn('⚠️ Groq failed:', groqError.message);
+        const validated = AIReviewResultSchema.parse(data)
+        return {
+          ...validated,
+          reviewer: validated.reviewer || providerName
+        }
+      } catch (error) {
+        console.warn(`${providerName} validation failed:`, error.message)
+        // Return fallback response with validation errors noted
+        return {
+          recommendation: data?.recommendation === 'include' ? 'include' : 'exclude',
+          confidence: Math.max(0, Math.min(1, Number(data?.confidence) || 0)),
+          reasoning: data?.reasoning || `Validation error in ${providerName} response. Manual review required.`,
+          reviewer: `${providerName} (Validation Error)`,
+          picott_assessment: data?.picott_assessment,
+          criteria_assessment: data?.criteria_assessment
+        }
+      }
+    }
+
+    try {
+      console.log('Attempting reasoning-model-first AI screening with enhanced validation...');
+      
+      // Prioritize reasoning models first
+      try {
+        reviewer1Result = await callOpenAI(reviewer1Prompt, 'o3-2025-04-16', 'OpenAI O3 Reasoning (Conservative)');
+        reviewer2Result = await callAnthropic(reviewer2Prompt, 'Anthropic Claude 4 Sonnet (Comprehensive)');
+        primaryProvider = 'openai-anthropic-reasoning';
+        console.log('✅ OpenAI O3 + Anthropic Claude 4 successful');
+      } catch (reasoningError) {
+        console.warn('⚠️ Primary reasoning models failed:', reasoningError.message);
         
-        // Fallback to OpenRouter free models
+        // Fallback to secondary reasoning models
         try {
-          reviewer1Result = await callOpenRouter(reviewer1Prompt, 'meta-llama/llama-3.2-3b-instruct:free', 'OpenRouter Free (Conservative)');
-          reviewer2Result = await callOpenRouter(reviewer2Prompt, 'mistralai/mistral-7b-instruct:free', 'OpenRouter Free (Comprehensive)');
-          primaryProvider = 'openrouter-free';
-          console.log('✅ OpenRouter free models successful');
-        } catch (openRouterError) {
-          console.warn('⚠️ OpenRouter failed:', openRouterError.message);
+          reviewer1Result = await callOpenRouter(reviewer1Prompt, 'deepseek/deepseek-r1-distill-llama-70b', 'DeepSeek R1 (Conservative)');
+          reviewer2Result = await callOpenAI(reviewer2Prompt, 'o4-mini-2025-04-16', 'OpenAI O4 Mini (Comprehensive)');
+          primaryProvider = 'deepseek-o4mini';
+          console.log('✅ DeepSeek R1 + O4 Mini successful');
+        } catch (secondaryReasoningError) {
+          console.warn('⚠️ Secondary reasoning models failed:', secondaryReasoningError.message);
           
-          // Fallback to Hugging Face free
+          // Fallback to enhanced general models
           try {
-            reviewer1Result = await callHuggingFace(reviewer1Prompt, 'HuggingFace (Conservative)');
-            reviewer2Result = await callHuggingFace(reviewer2Prompt, 'HuggingFace (Comprehensive)');
-            primaryProvider = 'huggingface';
-            console.log('✅ Hugging Face successful');
-          } catch (hfError) {
-            console.warn('⚠️ Hugging Face failed:', hfError.message);
+            reviewer1Result = await callGroq(reviewer1Prompt, 'deepseek-r1-distill-llama-70b', 'Groq DeepSeek R1 (Conservative)');
+            reviewer2Result = await callGemini(reviewer2Prompt, 'gemini-2.0-flash-exp', 'Gemini 2.0 Flash (Comprehensive)');
+            primaryProvider = 'groq-gemini';
+            console.log('✅ Groq DeepSeek R1 + Gemini 2.0 successful');
+          } catch (tertiaryError) {
+            console.warn('⚠️ Tertiary reasoning models failed:', tertiaryError.message);
             
-            // Fallback to Gemini free tier
+            // Final fallback to legacy models
             try {
-              reviewer1Result = await callGeminiWithFallback(reviewer1Prompt);
-              reviewer2Result = await callGeminiWithFallback(reviewer2Prompt);
-              primaryProvider = 'gemini';
-              console.log('✅ Gemini fallback successful');
-            } catch (geminiError) {
-              console.warn('⚠️ Gemini failed:', geminiError.message);
-              
-              // Fallback to Anthropic (paid)
-              try {
-                reviewer1Result = await callAnthropic(reviewer1Prompt, 'Anthropic Claude (Conservative)');
-                reviewer2Result = await callAnthropic(reviewer2Prompt, 'Anthropic Claude (Comprehensive)');
-                primaryProvider = 'anthropic';
-                console.log('✅ Anthropic fallback successful');
-              } catch (anthropicError) {
-                console.warn('⚠️ Anthropic failed:', anthropicError.message);
-                
-                // Final fallback to OpenAI (paid)
-                try {
-                  reviewer1Result = await callOpenAI(reviewer1Prompt, 'OpenAI GPT (Conservative)');
-                  reviewer2Result = await callOpenAI(reviewer2Prompt, 'OpenAI GPT (Comprehensive)');
-                  primaryProvider = 'openai';
-                  console.log('✅ OpenAI final fallback successful');
-                } catch (openAIError) {
-                  console.error('❌ All providers failed');
-                  throw new Error(`All AI providers failed: Groq: ${groqError.message}, OpenRouter: ${openRouterError.message}, HuggingFace: ${hfError.message}, Gemini: ${geminiError.message}, Anthropic: ${anthropicError.message}, OpenAI: ${openAIError.message}`);
-                }
-              }
+              reviewer1Result = await callHuggingFace(reviewer1Prompt, 'Meta-Llama-3.1-8B-Instruct', 'Llama 3.1 (Conservative)');
+              reviewer2Result = await callOpenRouter(reviewer2Prompt, 'meta-llama/llama-3.2-3b-instruct:free', 'Llama 3.2 Free (Comprehensive)');
+              primaryProvider = 'legacy-fallback';
+              console.log('✅ Legacy fallback successful');
+            } catch (legacyError) {
+              console.error('❌ All AI providers failed');
+              throw new Error(`All AI providers failed. Primary reasoning: ${reasoningError.message}, Secondary: ${secondaryReasoningError.message}, Tertiary: ${tertiaryError.message}, Legacy: ${legacyError.message}`);
             }
           }
         }
@@ -318,6 +367,10 @@ AI Reviewer 2 - COMPREHENSIVE APPROACH: Consider broader scientific value and po
       console.error('AI screening failed:', error);
       throw error;
     }
+
+    // Validate responses using Zod schemas
+    reviewer1Result = validateAIResponse(reviewer1Result, reviewer1Result.reviewer || 'Reviewer 1');
+    reviewer2Result = validateAIResponse(reviewer2Result, reviewer2Result.reviewer || 'Reviewer 2');
 
     console.log('Reviewer 1 result:', reviewer1Result);
     console.log('Reviewer 2 result:', reviewer2Result);
@@ -488,7 +541,7 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
           'x-api-version': '2023-06-01'
         },
         body: JSON.stringify({
-          model: 'claude-3-5-haiku-20241022',
+          model: 'claude-sonnet-4-20250514',
           max_tokens: 1000,
           temperature: 0.1,
           messages: [
@@ -605,7 +658,7 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
   throw lastError;
 }
 
-async function callGroq(prompt: string, reviewerName: string = 'Groq'): Promise<AIReviewResult> {
+async function callGroq(prompt: string, model: string = 'deepseek-r1-distill-llama-70b', reviewerName: string = 'Groq DeepSeek R1'): Promise<AIReviewResult> {
   const apiKey = groqApiKey;
   if (!apiKey) throw new Error('Groq API key not configured');
 
@@ -649,7 +702,7 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'llama-3.2-3b-preview',
+          model: model,
           messages: [
             {
               role: 'system',
@@ -770,7 +823,7 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
   throw lastError;
 }
 
-async function callHuggingFace(prompt: string, reviewerName: string = 'Hugging Face'): Promise<AIReviewResult> {
+async function callHuggingFace(prompt: string, model: string = 'Meta-Llama-3.1-8B-Instruct', reviewerName: string = 'Hugging Face Llama 3.1'): Promise<AIReviewResult> {
   const apiKey = huggingFaceApiKey;
   if (!apiKey) throw new Error('Hugging Face API key not configured');
 
@@ -935,7 +988,7 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
   throw lastError;
 }
 
-async function callOpenAI(prompt: string, reviewerName: string = 'OpenAI GPT-4o'): Promise<AIReviewResult> {
+async function callOpenAI(prompt: string, model: string = 'o3-2025-04-16', reviewerName: string = 'OpenAI O3'): Promise<AIReviewResult> {
   const apiKey = Deno.env.get('OPENAI_API_KEY');
   if (!apiKey) throw new Error('OpenAI API key not configured');
 
@@ -1068,7 +1121,7 @@ async function callOpenAI(prompt: string, reviewerName: string = 'OpenAI GPT-4o'
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: model,
           messages: [
             {
               role: 'system',
@@ -1079,8 +1132,9 @@ async function callOpenAI(prompt: string, reviewerName: string = 'OpenAI GPT-4o'
               content: prompt 
             }
           ],
-          max_tokens: 1000,
-          temperature: 0.1,
+          max_completion_tokens: model.includes('o3') || model.includes('o4') ? 1000 : undefined,
+          max_tokens: model.includes('gpt-4') ? 1000 : undefined,
+          temperature: model.includes('o3') || model.includes('o4') ? undefined : 0.1,
           response_format: {
             type: "json_schema",
             json_schema: {
@@ -1171,7 +1225,7 @@ async function callOpenAI(prompt: string, reviewerName: string = 'OpenAI GPT-4o'
           recommendation: 'exclude',
           confidence: 0.0,
           reasoning: `Error occurred during OpenAI screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
-          reviewer: 'OpenAI GPT-4o (Error)'
+          reviewer: `${reviewerName} (Error)`
         };
       }
       
@@ -1184,7 +1238,7 @@ async function callOpenAI(prompt: string, reviewerName: string = 'OpenAI GPT-4o'
   throw lastError;
 }
 
-async function callGemini(prompt: string): Promise<AIReviewResult> {
+async function callGemini(prompt: string, model: string = 'gemini-2.0-flash-exp', reviewerName: string = 'Gemini 2.0 Flash'): Promise<AIReviewResult> {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) throw new Error('Gemini API key not configured');
 
@@ -1401,7 +1455,7 @@ async function callGeminiWithFallback(prompt: string): Promise<AIReviewResult> {
   }
 }
 
-async function callOpenRouter(prompt: string, model: string = 'meta-llama/llama-3.2-3b-instruct:free', reviewerName?: string): Promise<AIReviewResult> {
+async function callOpenRouter(prompt: string, model: string = 'deepseek/deepseek-r1-distill-llama-70b', reviewerName?: string): Promise<AIReviewResult> {
   const apiKey = openRouterApiKey;
   if (!apiKey) throw new Error('OpenRouter API key not configured');
 
