@@ -17,8 +17,8 @@ function validateAndSanitizeInput(data: any) {
     throw new Error('Invalid request data');
   }
 
-  // Validate required fields
-  const required = ['references', 'criteria', 'userId', 'projectId'];
+  // Validate required fields for single reference screening
+  const required = ['referenceId', 'reference', 'criteria', 'projectId'];
   for (const field of required) {
     if (!data[field]) {
       throw new Error(`Missing required field: ${field}`);
@@ -34,39 +34,31 @@ function validateAndSanitizeInput(data: any) {
       .substring(0, 50000); // Limit length
   };
 
-  // Validate and sanitize references
-  if (!Array.isArray(data.references) || data.references.length === 0) {
-    throw new Error('References must be a non-empty array');
+  // Validate and sanitize reference (single object)
+  if (!data.reference || typeof data.reference !== 'object') {
+    throw new Error('Reference must be a valid object');
   }
 
-  if (data.references.length > 1000) {
-    throw new Error('Too many references (max 1000)');
-  }
+  // Sanitize reference fields
+  data.reference = {
+    title: sanitize(data.reference.title || ''),
+    abstract: sanitize(data.reference.abstract || ''),
+    authors: sanitize(data.reference.authors || ''),
+    year: parseInt(data.reference.year) || new Date().getFullYear(),
+    journal: sanitize(data.reference.journal || ''),
+    doi: sanitize(data.reference.doi || ''),
+    url: data.reference.url ? data.reference.url.toString() : ''
+  };
 
-  data.references = data.references.map((ref: any, index: number) => {
-    if (!ref || typeof ref !== 'object') {
-      throw new Error(`Invalid reference at index ${index}`);
-    }
-
-    return {
-      id: ref.id?.toString() || `ref_${index}`,
-      title: sanitize(ref.title || ''),
-      abstract: sanitize(ref.abstract || ''),
-      authors: sanitize(ref.authors || ''),
-      year: parseInt(ref.year) || new Date().getFullYear(),
-      journal: sanitize(ref.journal || ''),
-      doi: sanitize(ref.doi || ''),
-      url: ref.url ? new URL(ref.url).toString() : '' // Validate URL
-    };
-  });
-
-  // Validate user and project IDs (UUIDs)
+  // Validate project ID (UUID)
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(data.userId)) {
-    throw new Error('Invalid user ID format');
-  }
   if (!uuidRegex.test(data.projectId)) {
     throw new Error('Invalid project ID format');
+  }
+
+  // Validate referenceId format (can be UUID or other string)
+  if (!data.referenceId || typeof data.referenceId !== 'string') {
+    throw new Error('Invalid reference ID format');
   }
 
   return data;
@@ -141,9 +133,8 @@ serve(async (req) => {
     // Security logging
     console.log('Security validation passed for request:', {
       referenceId,
-      userId: validatedData.userId,
       projectId,
-      referenceCount: validatedData.references?.length || 'N/A'
+      referenceTitle: reference.title?.substring(0, 100)
     });
 
     // Create specialized prompts for each reviewer
