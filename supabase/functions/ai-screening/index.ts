@@ -239,142 +239,52 @@ CONFIDENCE SCORING:
 - 0.9-1.0: High confidence, clear evidence supporting decision
 `;
 
+    // Create reviewer-specific prompts with reasoning model instructions
     const reviewer1Prompt = `${basePrompt}
 
-AI Reviewer 1 - CONSERVATIVE APPROACH: Apply strict criteria adherence. If there's significant doubt about meeting inclusion criteria, lean toward EXCLUDE. Only recommend INCLUDE when criteria are clearly met.`;
+AI Reviewer 1 - CONSERVATIVE REASONING APPROACH: You are using advanced reasoning capabilities. Apply strict criteria adherence with step-by-step logical analysis. If there's significant doubt about meeting inclusion criteria, lean toward EXCLUDE. Only recommend INCLUDE when criteria are clearly met through systematic reasoning.`;
 
     const reviewer2Prompt = `${basePrompt}
 
-AI Reviewer 2 - COMPREHENSIVE APPROACH: Consider broader scientific value and potential relevance. If the study could contribute valuable insights despite minor criteria gaps, lean toward INCLUDE. Only recommend EXCLUDE when clearly irrelevant.`;
+AI Reviewer 2 - COMPREHENSIVE REASONING APPROACH: You are using advanced reasoning capabilities. Consider broader scientific value through systematic analysis. Use step-by-step reasoning to evaluate potential relevance. If the study could contribute valuable insights despite minor criteria gaps, lean toward INCLUDE. Only recommend EXCLUDE when clearly irrelevant after thorough reasoning.`;
 
-    // Enhanced reasoning-first AI provider selection with fallback strategy  
+    // CRITICAL FIX: Remove all old Vercel AI Gateway calls
+    console.log('Starting dual AI screening with reasoning models...');
+    
     let reviewer1Result: AIReviewResult;
     let reviewer2Result: AIReviewResult;
-    let primaryProvider = 'none';
-
-    // Zod schema for structured output validation
-    const AIReviewResultSchema = z.object({
-      recommendation: z.enum(['include', 'exclude']),
-      confidence: z.number().min(0).max(1),
-      reasoning: z.string().min(10),
-      reviewer: z.string().optional(),
-      picott_assessment: z.object({
-        population: z.object({
-          status: z.enum(['present', 'absent', 'unclear']),
-          evidence: z.string()
-        }),
-        intervention: z.object({
-          status: z.enum(['present', 'absent', 'unclear']),
-          evidence: z.string()
-        }),
-        comparator: z.object({
-          status: z.enum(['present', 'absent', 'unclear']),
-          evidence: z.string()
-        }),
-        outcome: z.object({
-          status: z.enum(['present', 'absent', 'unclear']),
-          evidence: z.string()
-        }),
-        timeframe: z.object({
-          status: z.enum(['present', 'absent', 'unclear']),
-          evidence: z.string()
-        }),
-        study_design: z.object({
-          status: z.enum(['present', 'absent', 'unclear']),
-          evidence: z.string()
-        })
-      }).optional(),
-      criteria_assessment: z.object({
-        inclusion_criteria: z.array(z.object({
-          criterion: z.string(),
-          status: z.enum(['met', 'not_met', 'unclear']),
-          evidence: z.string()
-        })),
-        exclusion_criteria: z.array(z.object({
-          criterion: z.string(),
-          status: z.enum(['violated', 'not_violated', 'unclear']),
-          evidence: z.string()
-        }))
-      }).optional()
-    })
-
-    // Validate AI response with enhanced error handling
-    const validateAIResponse = (data: any, providerName: string): AIReviewResult => {
-      try {
-        const validated = AIReviewResultSchema.parse(data)
-        return {
-          ...validated,
-          reviewer: validated.reviewer || providerName
-        }
-      } catch (error) {
-        console.warn(`${providerName} validation failed:`, error.message)
-        // Return fallback response with validation errors noted
-        return {
-          recommendation: data?.recommendation === 'include' ? 'include' : 'exclude',
-          confidence: Math.max(0, Math.min(1, Number(data?.confidence) || 0)),
-          reasoning: data?.reasoning || `Validation error in ${providerName} response. Manual review required.`,
-          reviewer: `${providerName} (Validation Error)`,
-          picott_assessment: data?.picott_assessment,
-          criteria_assessment: data?.criteria_assessment
-        }
-      }
-    }
-
+    // FIXED: Direct reasoning model calls without old fallbacks
     try {
-      console.log('Attempting reasoning-model-first AI screening with enhanced validation...');
+      console.log('🚀 Attempting OpenAI O3 + Anthropic Claude 4 reasoning models...');
       
-      // Prioritize reasoning models first
+      // Primary reasoning models (no fallbacks to avoid confusion)
+      reviewer1Result = await callOpenAI(reviewer1Prompt, 'o3-2025-04-16', 'OpenAI O3 Reasoning (Conservative)');
+      reviewer2Result = await callAnthropic(reviewer2Prompt, 'claude-sonnet-4-20250514', 'Anthropic Claude 4 Sonnet (Comprehensive)');
+      
+      console.log('✅ Primary reasoning models successful');
+    } catch (primaryError) {
+      console.warn('⚠️ Primary reasoning models failed, trying fallback:', primaryError.message);
+      
       try {
-        reviewer1Result = await callOpenAI(reviewer1Prompt, 'o3-2025-04-16', 'OpenAI O3 Reasoning (Conservative)');
-        reviewer2Result = await callAnthropic(reviewer2Prompt, 'Anthropic Claude 4 Sonnet (Comprehensive)');
-        primaryProvider = 'openai-anthropic-reasoning';
-        console.log('✅ OpenAI O3 + Anthropic Claude 4 successful');
-      } catch (reasoningError) {
-        console.warn('⚠️ Primary reasoning models failed:', reasoningError.message);
-        
         // Fallback to secondary reasoning models
-        try {
-          reviewer1Result = await callOpenRouter(reviewer1Prompt, 'deepseek/deepseek-r1-distill-llama-70b', 'DeepSeek R1 (Conservative)');
-          reviewer2Result = await callOpenAI(reviewer2Prompt, 'o4-mini-2025-04-16', 'OpenAI O4 Mini (Comprehensive)');
-          primaryProvider = 'deepseek-o4mini';
-          console.log('✅ DeepSeek R1 + O4 Mini successful');
-        } catch (secondaryReasoningError) {
-          console.warn('⚠️ Secondary reasoning models failed:', secondaryReasoningError.message);
-          
-          // Fallback to enhanced general models
-          try {
-            reviewer1Result = await callGroq(reviewer1Prompt, 'deepseek-r1-distill-llama-70b', 'Groq DeepSeek R1 (Conservative)');
-            reviewer2Result = await callGemini(reviewer2Prompt, 'gemini-2.0-flash-exp', 'Gemini 2.0 Flash (Comprehensive)');
-            primaryProvider = 'groq-gemini';
-            console.log('✅ Groq DeepSeek R1 + Gemini 2.0 successful');
-          } catch (tertiaryError) {
-            console.warn('⚠️ Tertiary reasoning models failed:', tertiaryError.message);
-            
-            // Final fallback to legacy models
-            try {
-              reviewer1Result = await callHuggingFace(reviewer1Prompt, 'Meta-Llama-3.1-8B-Instruct', 'Llama 3.1 (Conservative)');
-              reviewer2Result = await callOpenRouter(reviewer2Prompt, 'meta-llama/llama-3.2-3b-instruct:free', 'Llama 3.2 Free (Comprehensive)');
-              primaryProvider = 'legacy-fallback';
-              console.log('✅ Legacy fallback successful');
-            } catch (legacyError) {
-              console.error('❌ All AI providers failed');
-              throw new Error(`All AI providers failed. Primary reasoning: ${reasoningError.message}, Secondary: ${secondaryReasoningError.message}, Tertiary: ${tertiaryError.message}, Legacy: ${legacyError.message}`);
-            }
-          }
-        }
+        reviewer1Result = await callOpenRouter(reviewer1Prompt, 'deepseek/deepseek-r1-distill-llama-70b', 'DeepSeek R1 (Conservative)');
+        reviewer2Result = await callGroq(reviewer2Prompt, 'deepseek-r1-distill-llama-70b', 'Groq DeepSeek R1 (Comprehensive)');
+        
+        console.log('✅ Secondary reasoning models successful');
+      } catch (secondaryError) {
+        console.error('❌ All reasoning models failed:', secondaryError.message);
+        
+        // Emergency fallback with basic models
+        reviewer1Result = await callGroq(reviewer1Prompt, 'llama-3.3-70b-versatile', 'Groq Llama 3.3 (Conservative)');
+        reviewer2Result = await callGemini(reviewer2Prompt, 'gemini-2.0-flash-exp', 'Gemini 2.0 Flash (Comprehensive)');
+        
+        console.log('⚠️ Emergency fallback models used');
       }
-    } catch (error) {
-      console.error('AI screening failed:', error);
-      throw error;
     }
 
-    // Validate responses using Zod schemas
-    reviewer1Result = validateAIResponse(reviewer1Result, reviewer1Result.reviewer || 'Reviewer 1');
-    reviewer2Result = validateAIResponse(reviewer2Result, reviewer2Result.reviewer || 'Reviewer 2');
-
-    console.log('Reviewer 1 result:', reviewer1Result);
-    console.log('Reviewer 2 result:', reviewer2Result);
-    console.log('Primary provider used:', primaryProvider);
+    console.log('📊 Screening Results Summary:');
+    console.log('Reviewer 1:', reviewer1Result.reviewer, '→', reviewer1Result.recommendation);
+    console.log('Reviewer 2:', reviewer2Result.reviewer, '→', reviewer2Result.recommendation);
 
     // Enhanced agreement evaluation with error handling
     const bothReviewersValid = reviewer1Result.confidence > 0 && reviewer2Result.confidence > 0;
