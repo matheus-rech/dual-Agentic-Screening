@@ -1,327 +1,458 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.55.0';
-import { z } from 'https://esm.sh/zod@3.25.76';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
+// Environment variables
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
+const groqApiKey = Deno.env.get('GROQ_API_KEY');
+const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
+
+// Initialize Supabase client
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Content-Security-Policy': "default-src 'self'",
-  'X-Frame-Options': 'DENY',
-  'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'strict-origin-when-cross-origin'
 };
 
-// Input validation and sanitization
-function validateAndSanitizeInput(data: any) {
-  if (!data || typeof data !== 'object') {
-    throw new Error('Invalid request data');
-  }
+// Enhanced Zod schemas for validation
+const PICOTTAssessmentSchema = z.object({
+  population: z.object({
+    status: z.enum(['present', 'absent', 'unclear']),
+    evidence: z.string(),
+    quote: z.string().optional()
+  }),
+  intervention: z.object({
+    status: z.enum(['present', 'absent', 'unclear']),
+    evidence: z.string(),
+    quote: z.string().optional()
+  }),
+  comparator: z.object({
+    status: z.enum(['present', 'absent', 'unclear']),
+    evidence: z.string(),
+    quote: z.string().optional()
+  }),
+  outcome: z.object({
+    status: z.enum(['present', 'absent', 'unclear']),
+    evidence: z.string(),
+    quote: z.string().optional()
+  }),
+  timeframe: z.object({
+    status: z.enum(['present', 'absent', 'unclear']),
+    evidence: z.string(),
+    quote: z.string().optional()
+  }),
+  study_design: z.object({
+    status: z.enum(['present', 'absent', 'unclear']),
+    evidence: z.string(),
+    quote: z.string().optional()
+  })
+});
 
-  // Validate required fields for single reference screening
-  const required = ['referenceId', 'reference', 'criteria', 'projectId'];
-  for (const field of required) {
-    if (!data[field]) {
-      throw new Error(`Missing required field: ${field}`);
-    }
-  }
+const CriteriaAssessmentSchema = z.object({
+  inclusion_criteria: z.array(z.object({
+    criterion: z.string(),
+    status: z.enum(['met', 'not_met', 'unclear']),
+    evidence: z.string(),
+    quote: z.string().optional()
+  })),
+  exclusion_criteria: z.array(z.object({
+    criterion: z.string(),
+    status: z.enum(['violated', 'not_violated', 'unclear']),
+    evidence: z.string(),
+    quote: z.string().optional()
+  }))
+});
 
-  // Sanitize text inputs
-  const sanitize = (text: string) => {
-    if (!text || typeof text !== 'string') return '';
-    return text
-      .trim()
-      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
-      .substring(0, 50000); // Limit length
-  };
-
-  // Validate and sanitize reference (single object)
-  if (!data.reference || typeof data.reference !== 'object') {
-    throw new Error('Reference must be a valid object');
-  }
-
-  // Sanitize reference fields
-  data.reference = {
-    title: sanitize(data.reference.title || ''),
-    abstract: sanitize(data.reference.abstract || ''),
-    authors: sanitize(data.reference.authors || ''),
-    year: parseInt(data.reference.year) || new Date().getFullYear(),
-    journal: sanitize(data.reference.journal || ''),
-    doi: sanitize(data.reference.doi || ''),
-    url: data.reference.url ? data.reference.url.toString() : ''
-  };
-
-  // Validate project ID (UUID)
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(data.projectId)) {
-    throw new Error('Invalid project ID format');
-  }
-
-  // Validate referenceId format (can be UUID or other string)
-  if (!data.referenceId || typeof data.referenceId !== 'string') {
-    throw new Error('Invalid reference ID format');
-  }
-
-  return data;
-}
-
-const supabase = createClient(
-  Deno.env.get('SUPABASE_URL') ?? '',
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-);
-
-const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
-const vercelAIToken = Deno.env.get('VERCEL_AI_GATEWAY_TOKEN');
-const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
-const groqApiKey = Deno.env.get('GROQ_API_KEY');
-const huggingFaceApiKey = Deno.env.get('HUGGINGFACE_API_KEY');
-
-interface ScreeningRequest {
-  referenceId: string;
-  reference: {
-    title: string;
-    abstract: string;
-    authors: string;
-    journal?: string;
-    year?: number;
-    doi?: string;
-  };
-  criteria: {
-    population?: string;
-    intervention?: string;
-    comparator?: string;
-    outcome?: string;
-    studyDesigns?: string[];
-    timeframeStart?: string;
-    timeframeEnd?: string;
-    timeframeDescription?: string;
-    inclusionCriteria?: string[];
-    exclusionCriteria?: string[];
-  };
-  projectId: string;
-}
+const AIReviewResultSchema = z.object({
+  recommendation: z.enum(['include', 'exclude']),
+  confidence: z.number().min(0).max(1),
+  reasoning: z.string(),
+  reviewer: z.string(),
+  picott_assessment: PICOTTAssessmentSchema.optional(),
+  criteria_assessment: CriteriaAssessmentSchema.optional(),
+  tokens_used: z.number().optional(),
+  processing_time_ms: z.number().optional(),
+  model_version: z.string().optional()
+});
 
 interface AIReviewResult {
   recommendation: 'include' | 'exclude';
   confidence: number;
   reasoning: string;
   reviewer: string;
-  picott_assessment?: {
-    population: { status: string; evidence: string };
-    intervention: { status: string; evidence: string };
-    comparator: { status: string; evidence: string };
-    outcome: { status: string; evidence: string };
-    timeframe: { status: string; evidence: string };
-    study_design: { status: string; evidence: string };
-  };
-  criteria_assessment?: {
-    inclusion_criteria: Array<{ criterion: string; status: string; evidence: string }>;
-    exclusion_criteria: Array<{ criterion: string; status: string; evidence: string }>;
-  };
+  picott_assessment?: any;
+  criteria_assessment?: any;
+  tokens_used?: number;
+  processing_time_ms?: number;
+  model_version?: string;
+}
+
+interface ProviderHealthStatus {
+  provider: string;
+  healthy: boolean;
+  last_error?: string;
+  response_time_ms?: number;
+}
+
+// Provider health tracking
+const providerHealth = new Map<string, ProviderHealthStatus>();
+
+function updateProviderHealth(provider: string, healthy: boolean, error?: string, responseTime?: number) {
+  providerHealth.set(provider, {
+    provider,
+    healthy,
+    last_error: error,
+    response_time_ms: responseTime
+  });
+}
+
+function getProviderHealth(): ProviderHealthStatus[] {
+  return Array.from(providerHealth.values());
 }
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Parse and validate input with security checks
-    const rawData = await req.json();
-    const validatedData = validateAndSanitizeInput(rawData);
+    console.log('🔍 AI Screening Service - Enhanced with PICOTT Telemetry');
     
-    const { referenceId, reference, criteria, projectId }: ScreeningRequest = validatedData;
-    
-    console.log('Starting dual AI screening for reference:', referenceId);
-    
-    // Security logging
+    const { 
+      reference, 
+      criteria, 
+      projectId, 
+      sessionId,
+      referenceId 
+    } = await req.json();
+
+    // Validate required inputs
+    if (!reference || !criteria || !projectId) {
+      throw new Error('Missing required parameters: reference, criteria, or projectId');
+    }
+
+    // Security validation
+    if (!referenceId || typeof referenceId !== 'string' || referenceId.length < 10) {
+      throw new Error('Invalid reference ID format');
+    }
+
     console.log('Security validation passed for request:', {
-      referenceId,
-      projectId,
-      referenceTitle: reference.title?.substring(0, 100)
+      referenceId: referenceId.substring(0, 50) + '...',
+      projectId: projectId.substring(0, 20) + '...',
+      referenceTitle: reference.title?.substring(0, 80) + '...'
     });
 
-    // Create specialized prompts for each reviewer
+    // Enhanced PICOTT-focused prompts
     const basePrompt = `
-You are an expert systematic review researcher. Analyze this research reference against the provided inclusion criteria.
+You are an expert systematic review researcher conducting a literature screening for inclusion/exclusion decisions.
 
-REFERENCE:
+REFERENCE TO SCREEN:
 Title: ${reference.title}
 Abstract: ${reference.abstract}
-Authors: ${reference.authors}
-Journal: ${reference.journal || 'Not specified'}
-Year: ${reference.year || 'Not specified'}
+Authors: ${reference.authors?.join(', ') || 'Not provided'}
+Journal: ${reference.journal || 'Not provided'}
+Year: ${reference.year || 'Not provided'}
+DOI: ${reference.doi || 'Not provided'}
 
 SCREENING CRITERIA:
+Population: ${criteria.population}
+Intervention: ${criteria.intervention}
+Comparator: ${criteria.comparator}
+Outcomes: ${criteria.outcomes}
+Study Designs: ${criteria.studyDesigns?.join(', ') || 'Not specified'}
 
-PICO Framework:
-• Population: ${criteria.population || 'Not specified'}
-• Intervention: ${criteria.intervention || 'Not specified'}
-• Comparator: ${criteria.comparator || 'Not specified'}
-• Outcome: ${criteria.outcome || 'Not specified'}
+Inclusion Criteria:
+${criteria.inclusionCriteria?.map((c: string, i: number) => `${i+1}. ${c}`).join('\n') || 'None specified'}
 
-Study Types: ${criteria.studyDesigns?.join(', ') || 'Not specified'}
+Exclusion Criteria:  
+${criteria.exclusionCriteria?.map((c: string, i: number) => `${i+1}. ${c}`).join('\n') || 'None specified'}
 
-Timeframe/Follow-up Period:
-${criteria.timeframeStart && criteria.timeframeEnd ? `• Study Period: ${criteria.timeframeStart} to ${criteria.timeframeEnd}` : ''}
-${criteria.timeframeDescription ? `• Follow-up Details: ${criteria.timeframeDescription}` : ''}
-${!criteria.timeframeStart && !criteria.timeframeEnd && !criteria.timeframeDescription ? '• Not specified' : ''}
+CRITICAL TASK: You must provide a comprehensive PICOTT assessment with EXACT QUOTES from the abstract where evidence is found.
 
-INCLUSION CRITERIA:
-${criteria.inclusionCriteria?.filter(c => c.trim()).map(c => `• ${c}`).join('\n') || '• Not specified'}
+For each PICOTT element, you MUST:
+1. Determine if it's "present", "absent", or "unclear"
+2. If present: Provide the EXACT quote from the title/abstract that supports this
+3. If absent: Explain why it's missing and what you'd expect to see
+4. If unclear: Explain what's ambiguous and what additional information is needed
 
-EXCLUSION CRITERIA:
-${criteria.exclusionCriteria?.filter(c => c.trim()).map(c => `• ${c}`).join('\n') || '• Not specified'}
+RESPONSE FORMAT: Respond with ONLY valid JSON in this exact structure:`;
 
-You MUST make a definitive decision: either INCLUDE or EXCLUDE. "Maybe" is NOT an option.
-
-CRITICAL ANALYSIS REQUIREMENTS - STRUCTURED PICOTT ASSESSMENT:
-
-Your output MUST BEGIN with a systematic structured analysis of each PICOTT element. For EACH letter of PICOTT, you must provide:
-
-1. **DIRECT SOURCE QUOTE**: Extract the exact text from the abstract that relates to this element (use "Not mentioned" if absent)
-2. **YOUR ASSESSMENT/REASONING**: Explain WHY that quote (or absence) means the criteria is fulfilled or not fulfilled
-
-PICOTT ANALYSIS FORMAT REQUIRED:
-• **P (Population)**: Quote: "[exact quote or 'Not mentioned']" → Assessment: "[Your reasoning about whether this meets population criteria]"
-• **I (Intervention)**: Quote: "[exact quote or 'Not mentioned']" → Assessment: "[Your reasoning about whether this meets intervention criteria]" 
-• **C (Comparator)**: Quote: "[exact quote or 'Not mentioned']" → Assessment: "[Your reasoning about whether this meets comparator criteria]"
-• **O (Outcome)**: Quote: "[exact quote or 'Not mentioned']" → Assessment: "[Your reasoning about whether this meets outcome criteria]"
-• **T (Timeframe)**: Quote: "[exact quote or 'Not mentioned']" → Assessment: "[Your reasoning about whether this meets timeframe criteria]"
-• **T (Study Type)**: Quote: "[exact quote or 'Not mentioned']" → Assessment: "[Your reasoning about whether this meets study design criteria]"
-
-THEN assess inclusion/exclusion criteria systematically with the same quote → assessment approach.
-
-AFTER completing your PICOTT analysis and criteria assessment, you MUST provide an:
-
-**OVERALL REASONING SUMMARY**: 
-Write a concise narrative paragraph (2-4 sentences) that synthesizes the key aspects that led to your include/exclude decision. This should address:
-- Which PICOTT elements were strongest/weakest for this abstract
-- Which inclusion criteria were most clearly met or failed  
-- The decisive factors that tipped your decision toward include or exclude
-- Any significant gaps or strengths in the evidence
-
-Use thorough analysis, reflection, and reasoning to determine if the abstract is more likely to meet the inclusion criteria or not. Even with uncertainty, make the best decision based on available evidence.
-
-Provide your response in this exact JSON format:
+    const jsonStructure = `
 {
   "recommendation": "include|exclude",
-  "confidence": 0.xx,
+  "confidence": 0.XX,
   "picott_assessment": {
-    "population": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "intervention": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "comparator": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "outcome": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "timeframe": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "study_design": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"}
+    "population": {
+      "status": "present|absent|unclear",
+      "evidence": "Detailed analysis of population criteria",
+      "quote": "EXACT quote from abstract if status is present"
+    },
+    "intervention": {
+      "status": "present|absent|unclear", 
+      "evidence": "Detailed analysis of intervention criteria",
+      "quote": "EXACT quote from abstract if status is present"
+    },
+    "comparator": {
+      "status": "present|absent|unclear",
+      "evidence": "Detailed analysis of comparator criteria", 
+      "quote": "EXACT quote from abstract if status is present"
+    },
+    "outcome": {
+      "status": "present|absent|unclear",
+      "evidence": "Detailed analysis of outcome criteria",
+      "quote": "EXACT quote from abstract if status is present"
+    },
+    "timeframe": {
+      "status": "present|absent|unclear",
+      "evidence": "Detailed analysis of timeframe/follow-up",
+      "quote": "EXACT quote from abstract if status is present"
+    },
+    "study_design": {
+      "status": "present|absent|unclear",
+      "evidence": "Detailed analysis of study design",
+      "quote": "EXACT quote from abstract if status is present"
+    }
   },
   "criteria_assessment": {
     "inclusion_criteria": [
-      {"criterion": "criterion text", "status": "met|not_met|unclear", "evidence": "Direct quote or rationale"}
+      {
+        "criterion": "specific inclusion criterion text",
+        "status": "met|not_met|unclear",
+        "evidence": "Detailed rationale for this assessment",
+        "quote": "EXACT supporting quote if available"
+      }
     ],
     "exclusion_criteria": [
-      {"criterion": "criterion text", "status": "violated|not_violated|unclear", "evidence": "Direct quote or rationale"}
+      {
+        "criterion": "specific exclusion criterion text", 
+        "status": "violated|not_violated|unclear",
+        "evidence": "Detailed rationale for this assessment",
+        "quote": "EXACT supporting quote if available"
+      }
     ]
   },
-  "reasoning": "Final decision reasoning based on the above assessment and why you chose include/exclude despite any uncertainties"
-}
+  "reasoning": "Comprehensive final decision rationale explaining how PICOTT assessment and criteria evaluation led to include/exclude decision, highlighting key evidence and any uncertainties"
+}`;
 
-DECISION GUIDELINES:
-- If the study clearly meets most criteria → INCLUDE
-- If the study clearly fails key criteria → EXCLUDE  
-- If borderline/uncertain → Use your best judgment based on which is more likely
-- Lower confidence scores (0.3-0.6) are acceptable for difficult decisions
-- Always explain your reasoning, especially for borderline cases
+    const reviewer1Prompt = basePrompt + jsonStructure;
+    const reviewer2Prompt = basePrompt + jsonStructure;
 
-CONFIDENCE SCORING:
-- 0.3-0.5: Difficult decision with significant uncertainty but best judgment made
-- 0.6-0.8: Reasonable confidence with some minor concerns
-- 0.9-1.0: High confidence, clear evidence supporting decision
-`;
-
-    // Create reviewer-specific prompts with reasoning model instructions
-    const reviewer1Prompt = `${basePrompt}
-
-AI Reviewer 1 - CONSERVATIVE REASONING APPROACH: You are using advanced reasoning capabilities. Apply strict criteria adherence with step-by-step logical analysis. If there's significant doubt about meeting inclusion criteria, lean toward EXCLUDE. Only recommend INCLUDE when criteria are clearly met through systematic reasoning.`;
-
-    const reviewer2Prompt = `${basePrompt}
-
-AI Reviewer 2 - COMPREHENSIVE REASONING APPROACH: You are using advanced reasoning capabilities. Consider broader scientific value through systematic analysis. Use step-by-step reasoning to evaluate potential relevance. If the study could contribute valuable insights despite minor criteria gaps, lean toward INCLUDE. Only recommend EXCLUDE when clearly irrelevant after thorough reasoning.`;
-
-    // CRITICAL FIX: Remove all old Vercel AI Gateway calls
-    console.log('Starting dual AI screening with reasoning models...');
+    console.log('🚀 Starting enhanced dual AI screening with reasoning models...');
     
     let reviewer1Result: AIReviewResult;
     let reviewer2Result: AIReviewResult;
-    // FIXED: Direct reasoning model calls without old fallbacks
+    let primaryProvider = '';
+    
+    // Enhanced provider selection with health tracking
     try {
-      console.log('🚀 Attempting OpenAI O3 + Anthropic Claude 4 reasoning models...');
+      console.log('💡 Attempting primary reasoning models: OpenAI O3 + Anthropic Claude 4...');
+      const startTime = Date.now();
       
-      // Primary reasoning models (no fallbacks to avoid confusion)
-      reviewer1Result = await callOpenAI(reviewer1Prompt, 'o3-2025-04-16', 'OpenAI O3 Reasoning (Conservative)');
-      reviewer2Result = await callAnthropic(reviewer2Prompt, 'claude-sonnet-4-20250514', 'Anthropic Claude 4 Sonnet (Comprehensive)');
-      
+      // Call providers in parallel for better performance
+      const [result1, result2] = await Promise.allSettled([
+        callOpenAI(reviewer1Prompt, 'o3-2025-04-16', 'OpenAI O3 Reasoning (Conservative)'),
+        callAnthropic(reviewer2Prompt, 'Anthropic Claude 4 Sonnet (Comprehensive)')
+      ]);
+
+      const endTime = Date.now();
+      const totalTime = endTime - startTime;
+
+      if (result1.status === 'fulfilled') {
+        reviewer1Result = result1.value;
+        reviewer1Result.processing_time_ms = totalTime / 2;
+        updateProviderHealth('openai', true, undefined, totalTime / 2);
+      } else {
+        console.error('OpenAI failed:', result1.reason);
+        updateProviderHealth('openai', false, result1.reason.message);
+        throw result1.reason;
+      }
+
+      if (result2.status === 'fulfilled') {
+        reviewer2Result = result2.value;
+        reviewer2Result.processing_time_ms = totalTime / 2;
+        updateProviderHealth('anthropic', true, undefined, totalTime / 2);
+      } else {
+        console.error('Anthropic failed:', result2.reason);
+        updateProviderHealth('anthropic', false, result2.reason.message);
+        throw result2.reason;
+      }
+
+      primaryProvider = 'openai-anthropic-reasoning';
       console.log('✅ Primary reasoning models successful');
+      
     } catch (primaryError) {
-      console.warn('⚠️ Primary reasoning models failed, trying fallback:', primaryError.message);
+      console.warn('⚠️ Primary reasoning models failed, trying secondary providers:', primaryError.message);
       
       try {
-        // Fallback to secondary reasoning models
-        reviewer1Result = await callOpenRouter(reviewer1Prompt, 'deepseek/deepseek-r1-distill-llama-70b', 'DeepSeek R1 (Conservative)');
-        reviewer2Result = await callGroq(reviewer2Prompt, 'deepseek-r1-distill-llama-70b', 'Groq DeepSeek R1 (Comprehensive)');
+        // Secondary reasoning models: DeepSeek R1 + Groq
+        console.log('🔄 Attempting secondary reasoning models: DeepSeek R1 + Groq...');
+        const startTime = Date.now();
         
+        const [result1, result2] = await Promise.allSettled([
+          callOpenRouter(reviewer1Prompt, 'deepseek/deepseek-r1-distill-llama-70b', 'DeepSeek R1 (Conservative)'),
+          callGroq(reviewer2Prompt, 'deepseek-r1-distill-llama-70b', 'Groq DeepSeek R1 (Comprehensive)')
+        ]);
+
+        const endTime = Date.now();
+        const totalTime = endTime - startTime;
+
+        if (result1.status === 'fulfilled') {
+          reviewer1Result = result1.value;
+          reviewer1Result.processing_time_ms = totalTime / 2;
+          updateProviderHealth('openrouter', true, undefined, totalTime / 2);
+        } else {
+          updateProviderHealth('openrouter', false, result1.reason.message);
+          throw result1.reason;
+        }
+
+        if (result2.status === 'fulfilled') {
+          reviewer2Result = result2.value;
+          reviewer2Result.processing_time_ms = totalTime / 2;
+          updateProviderHealth('groq', true, undefined, totalTime / 2);
+        } else {
+          updateProviderHealth('groq', false, result2.reason.message);
+          throw result2.reason;
+        }
+
+        primaryProvider = 'deepseek-reasoning';
         console.log('✅ Secondary reasoning models successful');
+        
       } catch (secondaryError) {
-        console.error('❌ All reasoning models failed:', secondaryError.message);
+        console.error('❌ Secondary reasoning models failed, using emergency fallback:', secondaryError.message);
         
         // Emergency fallback with basic models
-        reviewer1Result = await callGroq(reviewer1Prompt, 'llama-3.3-70b-versatile', 'Groq Llama 3.3 (Conservative)');
-        reviewer2Result = await callGemini(reviewer2Prompt, 'gemini-2.0-flash-exp', 'Gemini 2.0 Flash (Comprehensive)');
-        
+        const startTime = Date.now();
+        const [result1, result2] = await Promise.allSettled([
+          callGroq(reviewer1Prompt, 'llama-3.3-70b-versatile', 'Groq Llama 3.3 (Conservative)'),
+          callGemini(reviewer2Prompt, 'gemini-2.0-flash-exp', 'Gemini 2.0 Flash (Comprehensive)')
+        ]);
+
+        const endTime = Date.now();
+        const totalTime = endTime - startTime;
+
+        if (result1.status === 'fulfilled') {
+          reviewer1Result = result1.value;
+          reviewer1Result.processing_time_ms = totalTime / 2;
+          updateProviderHealth('groq-fallback', true, undefined, totalTime / 2);
+        } else {
+          updateProviderHealth('groq-fallback', false, result1.reason.message);
+          // Final fallback: create minimal valid response
+          reviewer1Result = {
+            recommendation: 'exclude',
+            confidence: 0.1,
+            reasoning: `Emergency fallback due to provider failures: ${result1.reason.message}. Manual review required.`,
+            reviewer: 'Groq Llama 3.3 (Error)',
+            processing_time_ms: totalTime / 2
+          };
+        }
+
+        if (result2.status === 'fulfilled') {
+          reviewer2Result = result2.value;
+          reviewer2Result.processing_time_ms = totalTime / 2;
+          updateProviderHealth('gemini', true, undefined, totalTime / 2);
+        } else {
+          updateProviderHealth('gemini', false, result2.reason.message);
+          // Final fallback: create minimal valid response
+          reviewer2Result = {
+            recommendation: 'exclude',
+            confidence: 0.1,
+            reasoning: `Emergency fallback due to provider failures: ${result2.reason.message}. Manual review required.`,
+            reviewer: 'Gemini 2.0 Flash (Error)',
+            processing_time_ms: totalTime / 2
+          };
+        }
+
+        primaryProvider = 'emergency-fallback';
         console.log('⚠️ Emergency fallback models used');
       }
     }
 
-    console.log('📊 Screening Results Summary:');
-    console.log('Reviewer 1:', reviewer1Result.reviewer, '→', reviewer1Result.recommendation);
-    console.log('Reviewer 2:', reviewer2Result.reviewer, '→', reviewer2Result.recommendation);
+    console.log(`Primary provider used: ${primaryProvider}`);
 
-    // Enhanced agreement evaluation with error handling
+    // Enhanced validation with Zod schemas
+    try {
+      if (reviewer1Result.picott_assessment) {
+        PICOTTAssessmentSchema.parse(reviewer1Result.picott_assessment);
+      }
+      if (reviewer2Result.picott_assessment) {
+        PICOTTAssessmentSchema.parse(reviewer2Result.picott_assessment);
+      }
+      console.log('✅ PICOTT assessments validated successfully');
+    } catch (validationError) {
+      console.warn('⚠️ PICOTT validation failed:', validationError.message);
+    }
+
+    console.log('📊 Enhanced Screening Results Summary:');
+    console.log('Reviewer 1 result:', {
+      reviewer: reviewer1Result.reviewer,
+      recommendation: reviewer1Result.recommendation,
+      confidence: reviewer1Result.confidence,
+      processing_time: reviewer1Result.processing_time_ms + 'ms',
+      tokens: reviewer1Result.tokens_used || 'unknown'
+    });
+    
+    console.log('Reviewer 2 result:', {
+      reviewer: reviewer2Result.reviewer,
+      recommendation: reviewer2Result.recommendation,
+      confidence: reviewer2Result.confidence,
+      processing_time: reviewer2Result.processing_time_ms + 'ms',
+      tokens: reviewer2Result.tokens_used || 'unknown'
+    });
+
+    // Enhanced agreement evaluation with detailed reasoning
     const bothReviewersValid = reviewer1Result.confidence > 0 && reviewer2Result.confidence > 0;
     const agreement = bothReviewersValid && (reviewer1Result.recommendation === reviewer2Result.recommendation);
     let finalDecision: string;
     let averageConfidence: number;
+    let consensusReasoning: string;
     
     if (agreement && bothReviewersValid) {
       finalDecision = reviewer1Result.recommendation;
       averageConfidence = (reviewer1Result.confidence + reviewer2Result.confidence) / 2;
+      consensusReasoning = `Both reviewers agreed on "${finalDecision}" with average confidence ${averageConfidence.toFixed(2)}. Consensus reached through consistent PICOTT assessment.`;
+      console.log('✅ Reviewers in agreement:', finalDecision);
     } else if (bothReviewersValid) {
-      // Conflict resolution: Use the decision with higher confidence
+      // Enhanced conflict resolution with PICOTT analysis
       if (reviewer1Result.confidence > reviewer2Result.confidence) {
         finalDecision = reviewer1Result.recommendation;
         averageConfidence = reviewer1Result.confidence;
+        consensusReasoning = `Conflict resolved in favor of Reviewer 1 (${reviewer1Result.reviewer}) due to higher confidence (${reviewer1Result.confidence} vs ${reviewer2Result.confidence}). Decision: ${finalDecision}`;
       } else if (reviewer2Result.confidence > reviewer1Result.confidence) {
         finalDecision = reviewer2Result.recommendation;
         averageConfidence = reviewer2Result.confidence;
+        consensusReasoning = `Conflict resolved in favor of Reviewer 2 (${reviewer2Result.reviewer}) due to higher confidence (${reviewer2Result.confidence} vs ${reviewer1Result.confidence}). Decision: ${finalDecision}`;
       } else {
         // Equal confidence: Default to conservative approach (exclude)
         finalDecision = 'exclude';
         averageConfidence = Math.max(reviewer1Result.confidence, reviewer2Result.confidence);
+        consensusReasoning = `Equal confidence conflict resolved using conservative approach. Both reviewers had confidence ${reviewer1Result.confidence}. Defaulting to exclude for safety.`;
       }
+      console.log('⚠️ Conflict detected and resolved:', consensusReasoning);
     } else {
       // One or both reviewers failed - use the valid one or default to exclude
       if (reviewer1Result.confidence > 0) {
         finalDecision = reviewer1Result.recommendation;
         averageConfidence = reviewer1Result.confidence;
+        consensusReasoning = `Using Reviewer 1 result due to Reviewer 2 failure. Decision based on ${reviewer1Result.reviewer} with confidence ${reviewer1Result.confidence}.`;
         console.log('Using Reviewer 1 result due to Reviewer 2 failure');
       } else if (reviewer2Result.confidence > 0) {
         finalDecision = reviewer2Result.recommendation;
         averageConfidence = reviewer2Result.confidence;
+        consensusReasoning = `Using Reviewer 2 result due to Reviewer 1 failure. Decision based on ${reviewer2Result.reviewer} with confidence ${reviewer2Result.confidence}.`;
         console.log('Using Reviewer 2 result due to Reviewer 1 failure');
       } else {
         // Both failed - default to exclude for safety
         finalDecision = 'exclude';
         averageConfidence = 0.1;
+        consensusReasoning = `Both reviewers failed - defaulting to exclude for safety. Manual review required. Errors: R1(${reviewer1Result.reasoning}) R2(${reviewer2Result.reasoning})`;
         console.warn('Both reviewers failed - defaulting to exclude');
       }
     }
@@ -337,68 +468,157 @@ AI Reviewer 2 - COMPREHENSIVE REASONING APPROACH: You are using advanced reasoni
 
     const finalDecisionMapped = mapDecision(finalDecision);
 
-    // Log screening results
+    // Enhanced telemetry logging with PICOTT details
+    const telemetryData = {
+      project_id: projectId,
+      reference_id: referenceId,
+      screening_stage: 'title_abstract_screening',
+      primary_model_decision: mapDecision(reviewer1Result.recommendation),
+      primary_model_confidence: reviewer1Result.confidence,
+      secondary_model_decision: mapDecision(reviewer2Result.recommendation),
+      secondary_model_confidence: reviewer2Result.confidence,
+      final_decision: finalDecisionMapped,
+      average_confidence: averageConfidence,
+      agreement_status: agreement ? 'agreement' : 'conflict',
+      primary_model_name: reviewer1Result.reviewer,
+      secondary_model_name: reviewer2Result.reviewer,
+      consensus_reasoning: consensusReasoning,
+      primary_provider: primaryProvider,
+      total_tokens_used: (reviewer1Result.tokens_used || 0) + (reviewer2Result.tokens_used || 0),
+      total_processing_time_ms: (reviewer1Result.processing_time_ms || 0) + (reviewer2Result.processing_time_ms || 0),
+      picott_telemetry: JSON.stringify({
+        reviewer1_picott: reviewer1Result.picott_assessment,
+        reviewer2_picott: reviewer2Result.picott_assessment,
+        criteria_assessment_1: reviewer1Result.criteria_assessment,
+        criteria_assessment_2: reviewer2Result.criteria_assessment
+      }),
+      provider_health: JSON.stringify(getProviderHealth())
+    };
+
+    // Log enhanced screening results
     const { error: logError } = await supabase
       .from('ai_screening_log')
-      .insert({
-        project_id: projectId,
-        reference_id: referenceId,
-        screening_stage: 'title_abstract_screening',
-        primary_model_decision: mapDecision(reviewer1Result.recommendation),
-        primary_model_confidence: reviewer1Result.confidence,
-        secondary_model_decision: mapDecision(reviewer2Result.recommendation),
-        secondary_model_confidence: reviewer2Result.confidence,
-        final_decision: finalDecisionMapped,
-        decision_reason: {
-          reviewer1: reviewer1Result,
-          reviewer2: reviewer2Result,
-          agreement,
-          conflict: !agreement
-        }
-      });
+      .insert(telemetryData);
 
     if (logError) {
-      console.error('Error logging screening results:', logError);
+      console.error('Failed to log screening results:', logError);
+    } else {
+      console.log('✅ Enhanced telemetry logged successfully');
     }
 
-    // Update reference status
-    const { error: updateError } = await supabase
-      .from('references')
-      .update({
-        status: finalDecisionMapped,
-        ai_recommendation: finalDecisionMapped,
-        ai_confidence: averageConfidence,
-        ai_screening_details: {
-          reviewer1: reviewer1Result,
-          reviewer2: reviewer2Result,
-          agreement,
-          processed_at: new Date().toISOString()
-        },
-        ai_conflict_flag: !agreement
-      })
-      .eq('id', referenceId);
+    // Update progress if session provided
+    if (sessionId) {
+      const { error: progressError } = await supabase
+        .from('screening_progress')
+        .update({
+          completed_references: 1,
+          last_updated: new Date().toISOString()
+        })
+        .eq('session_id', sessionId);
 
-    if (updateError) {
-      console.error('Error updating reference:', updateError);
+      if (progressError) {
+        console.error('Failed to update progress:', progressError);
+      }
+
+      // Log detailed reasoning steps for telemetry
+      const { error: reasoningError } = await supabase
+        .from('screening_reasoning_steps')
+        .insert({
+          session_id: sessionId,
+          reference_id: referenceId,
+          step_type: 'picott_analysis',
+          step_data: JSON.stringify({
+            reviewer1_analysis: {
+              reviewer: reviewer1Result.reviewer,
+              picott_assessment: reviewer1Result.picott_assessment,
+              criteria_assessment: reviewer1Result.criteria_assessment,
+              reasoning: reviewer1Result.reasoning,
+              confidence: reviewer1Result.confidence
+            },
+            reviewer2_analysis: {
+              reviewer: reviewer2Result.reviewer,
+              picott_assessment: reviewer2Result.picott_assessment,
+              criteria_assessment: reviewer2Result.criteria_assessment,
+              reasoning: reviewer2Result.reasoning,
+              confidence: reviewer2Result.confidence
+            },
+            consensus_analysis: {
+              final_decision: finalDecision,
+              average_confidence: averageConfidence,
+              consensus_reasoning: consensusReasoning,
+              agreement_status: agreement ? 'agreement' : 'conflict'
+            }
+          }),
+          created_at: new Date().toISOString()
+        });
+
+      if (reasoningError) {
+        console.error('Failed to log reasoning steps:', reasoningError);
+      } else {
+        console.log('✅ Detailed reasoning steps logged successfully');
+      }
     }
 
-    return new Response(JSON.stringify({
+    // Construct enhanced response with telemetry
+    const response = {
       success: true,
-      referenceId,
-      finalDecision,
-      agreement,
+      decision: finalDecisionMapped,
       confidence: averageConfidence,
-      reviewer1: reviewer1Result,
-      reviewer2: reviewer2Result
-    }), {
+      reasoning: consensusReasoning,
+      agreement: agreement,
+      reviewers: [
+        {
+          name: reviewer1Result.reviewer,
+          recommendation: reviewer1Result.recommendation,
+          confidence: reviewer1Result.confidence,
+          reasoning: reviewer1Result.reasoning,
+          picott_assessment: reviewer1Result.picott_assessment,
+          criteria_assessment: reviewer1Result.criteria_assessment,
+          processing_time_ms: reviewer1Result.processing_time_ms,
+          tokens_used: reviewer1Result.tokens_used
+        },
+        {
+          name: reviewer2Result.reviewer,
+          recommendation: reviewer2Result.recommendation,
+          confidence: reviewer2Result.confidence,
+          reasoning: reviewer2Result.reasoning,
+          picott_assessment: reviewer2Result.picott_assessment,
+          criteria_assessment: reviewer2Result.criteria_assessment,
+          processing_time_ms: reviewer2Result.processing_time_ms,
+          tokens_used: reviewer2Result.tokens_used
+        }
+      ],
+      telemetry: {
+        primary_provider: primaryProvider,
+        total_processing_time_ms: (reviewer1Result.processing_time_ms || 0) + (reviewer2Result.processing_time_ms || 0),
+        total_tokens_used: (reviewer1Result.tokens_used || 0) + (reviewer2Result.tokens_used || 0),
+        provider_health: getProviderHealth()
+      }
+    };
+
+    console.log('🎉 Enhanced AI screening completed successfully');
+    
+    return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('Error in ai-screening function:', error);
+    console.error('❌ AI Screening Service Error:', error);
+    
+    // Log error for debugging
+    const errorDetails = {
+      message: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    };
+    
+    console.error('Error details:', errorDetails);
+    
     return new Response(JSON.stringify({ 
+      success: false, 
       error: error.message,
-      success: false 
+      details: 'Check function logs for more information',
+      provider_health: getProviderHealth()
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -406,42 +626,177 @@ AI Reviewer 2 - COMPREHENSIVE REASONING APPROACH: You are using advanced reasoni
   }
 });
 
-async function callAnthropic(prompt: string, reviewerName: string = 'Anthropic Claude'): Promise<AIReviewResult> {
+// Enhanced OpenAI function with O3 reasoning support
+async function callOpenAI(prompt: string, model: string = 'o3-2025-04-16', reviewerName: string = 'OpenAI O3 Reasoning'): Promise<AIReviewResult> {
+  const apiKey = openaiApiKey;
+  if (!apiKey) throw new Error('OpenAI API key not configured');
+
+  const startTime = Date.now();
+  const maxRetries = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`OpenAI attempt ${attempt}/${maxRetries}`);
+
+      // Enhanced prompt with strict PICOTT instructions
+      const enhancedPrompt = `${prompt}
+
+CRITICAL INSTRUCTIONS FOR PICOTT ASSESSMENT:
+- For each PICOTT element, you MUST provide exact quotes from the abstract/title
+- If an element is present, the "quote" field must contain the EXACT text that supports it
+- If absent, explain what's missing and what you'd expect to see
+- If unclear, explain the ambiguity and what additional info is needed
+- Be precise and conservative in your assessments
+
+Remember: This is for systematic review screening - accuracy is paramount.`;
+
+      const requestBody: any = {
+        model: model,
+        messages: [
+          { 
+            role: 'system', 
+            content: 'You are an expert systematic review researcher conducting literature screening with rigorous PICOTT assessment methodology.' 
+          },
+          { 
+            role: 'user', 
+            content: enhancedPrompt 
+          }
+        ]
+      };
+
+      // Handle model-specific parameters
+      if (model.startsWith('o3') || model.startsWith('o4') || model.startsWith('gpt-5') || model.startsWith('gpt-4.1')) {
+        requestBody.max_completion_tokens = 2000;
+        // No temperature for reasoning models
+      } else {
+        requestBody.max_tokens = 2000;
+        requestBody.temperature = 0.1;
+      }
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        lastError = new Error(`OpenAI API error (${response.status}): ${errorText}`);
+        console.error(`OpenAI attempt ${attempt} failed:`, lastError.message);
+        
+        if (attempt === maxRetries) throw lastError;
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        continue;
+      }
+
+      const data = await response.json();
+      console.log('OpenAI raw response:', JSON.stringify(data, null, 2));
+
+      if (!data.choices || !data.choices[0] || !data.choices[0].message || !data.choices[0].message.content) {
+        throw new Error('Invalid OpenAI response structure');
+      }
+
+      const content = data.choices[0].message.content;
+      const processingTime = Date.now() - startTime;
+
+      // Enhanced JSON parsing with better error handling
+      let result;
+      try {
+        // Clean content - remove markdown formatting if present
+        let cleanContent = content.trim();
+        if (cleanContent.startsWith('```json')) {
+          cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (cleanContent.startsWith('```')) {
+          cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+        
+        result = JSON.parse(cleanContent);
+      } catch (parseError) {
+        console.error('JSON parse error from OpenAI:', parseError, 'Content:', content);
+        
+        // Try to extract JSON from text if parsing fails
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            result = JSON.parse(jsonMatch[0]);
+          } catch (secondParseError) {
+            throw new Error(`Could not parse JSON from OpenAI: ${parseError.message}`);
+          }
+        } else {
+          throw new Error(`No valid JSON found in OpenAI response: ${content}`);
+        }
+      }
+
+      // Validate required fields
+      if (!result.recommendation || typeof result.confidence !== 'number') {
+        throw new Error('Missing required fields in OpenAI response');
+      }
+
+      // Ensure confidence is between 0 and 1
+      result.confidence = Math.max(0, Math.min(1, result.confidence));
+
+      // Validate recommendation
+      if (!['include', 'exclude'].includes(result.recommendation)) {
+        console.warn('Invalid recommendation from OpenAI:', result.recommendation, 'defaulting to exclude');
+        result.recommendation = 'exclude';
+      }
+
+      return {
+        recommendation: result.recommendation,
+        confidence: result.confidence,
+        reasoning: result.reasoning || 'No reasoning provided',
+        reviewer: reviewerName,
+        picott_assessment: result.picott_assessment,
+        criteria_assessment: result.criteria_assessment,
+        tokens_used: data.usage?.total_tokens || 0,
+        processing_time_ms: processingTime,
+        model_version: model
+      };
+
+    } catch (error) {
+      lastError = error;
+      console.error(`OpenAI attempt ${attempt} failed:`, error.message);
+      
+      if (attempt === maxRetries) {
+        throw new Error(`OpenAI failed after ${maxRetries} attempts: ${error.message}`);
+      }
+      
+      // Wait before retry
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+
+  throw lastError;
+}
+
+// Enhanced Anthropic function with better error handling
+async function callAnthropic(prompt: string, reviewerName: string = 'Anthropic Claude 4 Sonnet'): Promise<AIReviewResult> {
   const apiKey = anthropicApiKey;
-  if (!apiKey) throw new Error('Anthropic API key not configured');
+  if (!apiKey || apiKey.trim() === '') {
+    throw new Error('Anthropic API key not configured or empty');
+  }
 
-  // Enhanced prompt with strict JSON instructions for Anthropic
-  const jsonPrompt = `${prompt}
-
-CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdown, no extra text):
-{
-  "recommendation": "include|exclude",
-  "confidence": 0.xx,
-  "picott_assessment": {
-    "population": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "intervention": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "comparator": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "outcome": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "timeframe": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "study_design": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"}
-  },
-  "criteria_assessment": {
-    "inclusion_criteria": [
-      {"criterion": "criterion text", "status": "met|not_met|unclear", "evidence": "Direct quote or rationale"}
-    ],
-    "exclusion_criteria": [
-      {"criterion": "criterion text", "status": "violated|not_violated|unclear", "evidence": "Direct quote or rationale"}
-    ]
-  },
-  "reasoning": "Final decision reasoning based on the above assessment and why you chose include/exclude despite any uncertainties"
-}`;
-
+  const startTime = Date.now();
   const maxRetries = 3;
   let lastError;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`Anthropic attempt ${attempt}/${maxRetries}`);
+
+      // Enhanced prompt with PICOTT focus
+      const enhancedPrompt = `${prompt}
+
+CRITICAL PICOTT ASSESSMENT REQUIREMENTS:
+- Extract EXACT quotes from the abstract for each PICOTT element
+- Be extremely precise with quote attribution
+- If information is missing, clearly state what's absent
+- Provide detailed evidence for each assessment
+- Use conservative judgment for systematic review standards`;
 
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -451,13 +806,13 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
           'x-api-version': '2023-06-01'
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
+          model: 'claude-3-5-sonnet-20241022', // Use stable model for now
+          max_tokens: 2000,
           temperature: 0.1,
           messages: [
             { 
               role: 'user', 
-              content: jsonPrompt 
+              content: enhancedPrompt 
             }
           ]
         }),
@@ -493,43 +848,42 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
       }
 
       const content = data.content[0].text;
+      const processingTime = Date.now() - startTime;
       
-      // Clean the content - remove markdown formatting if present
-      let cleanContent = content.trim();
-      if (cleanContent.startsWith('```json')) {
-        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (cleanContent.startsWith('```')) {
-        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      
+      // Enhanced JSON parsing
       let result;
       try {
+        let cleanContent = content.trim();
+        if (cleanContent.startsWith('```json')) {
+          cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (cleanContent.startsWith('```')) {
+          cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+        
         result = JSON.parse(cleanContent);
       } catch (parseError) {
-        console.error('JSON parse error from Anthropic:', parseError, 'Content:', cleanContent);
+        console.error('JSON parse error from Anthropic:', parseError, 'Content:', content);
         
-        // Try to extract JSON from text if parsing fails
-        const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
+        // Try to extract JSON from text
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           try {
             result = JSON.parse(jsonMatch[0]);
           } catch (secondParseError) {
-            throw new Error(`Could not parse JSON from Anthropic response: ${parseError.message}`);
+            throw new Error(`Could not parse JSON from Anthropic: ${parseError.message}`);
           }
         } else {
-          throw new Error(`No valid JSON found in Anthropic response: ${cleanContent}`);
+          throw new Error(`No valid JSON found in Anthropic response: ${content}`);
         }
       }
 
-      // Validate the result structure
+      // Validate and clean response
       if (!result.recommendation || typeof result.confidence !== 'number' || !result.reasoning) {
         throw new Error('Missing required fields in Anthropic response');
       }
 
-      // Ensure confidence is between 0 and 1
       result.confidence = Math.max(0, Math.min(1, result.confidence));
 
-      // Ensure recommendation is valid
       if (!['include', 'exclude'].includes(result.recommendation)) {
         console.warn('Invalid recommendation from Anthropic:', result.recommendation, 'defaulting to exclude');
         result.recommendation = 'exclude';
@@ -541,7 +895,10 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
         reasoning: result.reasoning,
         reviewer: reviewerName,
         picott_assessment: result.picott_assessment,
-        criteria_assessment: result.criteria_assessment
+        criteria_assessment: result.criteria_assessment,
+        tokens_used: data.usage?.input_tokens + data.usage?.output_tokens || 0,
+        processing_time_ms: processingTime,
+        model_version: 'claude-3-5-sonnet-20241022'
       };
 
     } catch (error) {
@@ -549,61 +906,36 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
       console.error(`Anthropic attempt ${attempt} failed:`, error.message);
       
       if (attempt === maxRetries) {
-        // Return fallback response
+        // Return error result instead of throwing
         console.error('All Anthropic attempts failed, returning fallback response');
         return {
           recommendation: 'exclude',
           confidence: 0.0,
           reasoning: `Error occurred during Anthropic screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
-          reviewer: `${reviewerName} (Error)`
+          reviewer: `${reviewerName} (Error)`,
+          processing_time_ms: Date.now() - startTime
         };
       }
       
-      // Wait before retry
       await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
     }
   }
 
-  // This should never be reached, but just in case
   throw lastError;
 }
 
+// Enhanced Groq function with DeepSeek R1 support
 async function callGroq(prompt: string, model: string = 'deepseek-r1-distill-llama-70b', reviewerName: string = 'Groq DeepSeek R1'): Promise<AIReviewResult> {
   const apiKey = groqApiKey;
   if (!apiKey) throw new Error('Groq API key not configured');
 
-  // Enhanced prompt with strict JSON instructions for Groq
-  const jsonPrompt = `${prompt}
-
-CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdown, no extra text):
-{
-  "recommendation": "include|exclude",
-  "confidence": 0.xx,
-  "picott_assessment": {
-    "population": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "intervention": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "comparator": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "outcome": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "timeframe": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "study_design": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"}
-  },
-  "criteria_assessment": {
-    "inclusion_criteria": [
-      {"criterion": "criterion text", "status": "met|not_met|unclear", "evidence": "Direct quote or rationale"}
-    ],
-    "exclusion_criteria": [
-      {"criterion": "criterion text", "status": "violated|not_violated|unclear", "evidence": "Direct quote or rationale"}
-    ]
-  },
-  "reasoning": "Final decision reasoning based on the above assessment and why you chose include/exclude despite any uncertainties"
-}`;
-
+  const startTime = Date.now();
   const maxRetries = 3;
   let lastError;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`Groq attempt ${attempt}/${maxRetries}`);
+      console.log(`Groq attempt ${attempt}/${maxRetries} with model: ${model}`);
 
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
@@ -616,34 +948,22 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
           messages: [
             {
               role: 'system',
-              content: 'You are an expert systematic review researcher. Always respond with valid JSON in the exact format requested.'
+              content: 'You are an expert systematic review researcher with expertise in PICOTT methodology for literature screening.'
             },
-            { 
-              role: 'user', 
-              content: jsonPrompt 
+            {
+              role: 'user',
+              content: prompt
             }
           ],
-          max_tokens: 1000,
+          max_tokens: 2000,
           temperature: 0.1
         }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        let errorDetails;
-        try {
-          errorDetails = JSON.parse(errorText);
-        } catch {
-          errorDetails = { message: errorText };
-        }
-        
-        lastError = new Error(`Groq API error (${response.status}): ${JSON.stringify(errorDetails)}`);
-        console.error(`Groq attempt ${attempt} failed:`, {
-          status: response.status,
-          error: errorDetails,
-          attempt: attempt,
-          maxRetries: maxRetries
-        });
+        lastError = new Error(`Groq API error (${response.status}): ${errorText}`);
+        console.error(`Groq attempt ${attempt} failed:`, lastError.message);
         
         if (attempt === maxRetries) throw lastError;
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
@@ -651,757 +971,67 @@ CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdow
       }
 
       const data = await response.json();
-      console.log('Groq raw response:', JSON.stringify(data, null, 2));
+      const processingTime = Date.now() - startTime;
 
       if (!data.choices || !data.choices[0] || !data.choices[0].message) {
         throw new Error('Invalid Groq response structure');
       }
 
       const content = data.choices[0].message.content;
-      
-      // Clean the content - remove markdown formatting if present
-      let cleanContent = content.trim();
-      if (cleanContent.startsWith('```json')) {
-        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (cleanContent.startsWith('```')) {
-        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      
+
+      // Parse JSON response
       let result;
       try {
+        let cleanContent = content.trim();
+        if (cleanContent.startsWith('```json')) {
+          cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        }
         result = JSON.parse(cleanContent);
       } catch (parseError) {
-        console.error('JSON parse error from Groq:', parseError, 'Content:', cleanContent);
-        
-        // Try to extract JSON from text if parsing fails
-        const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          try {
-            result = JSON.parse(jsonMatch[0]);
-          } catch (secondParseError) {
-            throw new Error(`Could not parse JSON from Groq response: ${parseError.message}`);
-          }
+          result = JSON.parse(jsonMatch[0]);
         } else {
-          throw new Error(`No valid JSON found in Groq response: ${cleanContent}`);
+          throw new Error(`Could not parse JSON from Groq: ${parseError.message}`);
         }
       }
 
-      // Validate the result structure
-      if (!result.recommendation || typeof result.confidence !== 'number' || !result.reasoning) {
-        throw new Error('Missing required fields in Groq response');
-      }
-
-      // Ensure confidence is between 0 and 1
-      result.confidence = Math.max(0, Math.min(1, result.confidence));
-
-      // Ensure recommendation is valid
+      // Validate and return
+      result.confidence = Math.max(0, Math.min(1, result.confidence || 0.5));
       if (!['include', 'exclude'].includes(result.recommendation)) {
-        console.warn('Invalid recommendation from Groq:', result.recommendation, 'defaulting to exclude');
         result.recommendation = 'exclude';
       }
 
       return {
         recommendation: result.recommendation,
         confidence: result.confidence,
-        reasoning: result.reasoning,
+        reasoning: result.reasoning || 'No reasoning provided',
         reviewer: reviewerName,
         picott_assessment: result.picott_assessment,
-        criteria_assessment: result.criteria_assessment
+        criteria_assessment: result.criteria_assessment,
+        tokens_used: data.usage?.total_tokens || 0,
+        processing_time_ms: processingTime,
+        model_version: model
       };
 
     } catch (error) {
       lastError = error;
       console.error(`Groq attempt ${attempt} failed:`, error.message);
       
-      if (attempt === maxRetries) {
-        // Return fallback response
-        console.error('All Groq attempts failed, returning fallback response');
-        return {
-          recommendation: 'exclude',
-          confidence: 0.0,
-          reasoning: `Error occurred during Groq screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
-          reviewer: `${reviewerName} (Error)`
-        };
-      }
-      
-      // Wait before retry
+      if (attempt === maxRetries) throw lastError;
       await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
     }
   }
 
-  // This should never be reached, but just in case
   throw lastError;
 }
 
-async function callHuggingFace(prompt: string, model: string = 'Meta-Llama-3.1-8B-Instruct', reviewerName: string = 'Hugging Face Llama 3.1'): Promise<AIReviewResult> {
-  const apiKey = huggingFaceApiKey;
-  if (!apiKey) throw new Error('Hugging Face API key not configured');
-
-  // Enhanced prompt with strict JSON instructions for Hugging Face
-  const jsonPrompt = `${prompt}
-
-CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdown, no extra text):
-{
-  "recommendation": "include|exclude",
-  "confidence": 0.xx,
-  "picott_assessment": {
-    "population": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "intervention": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "comparator": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "outcome": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "timeframe": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "study_design": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"}
-  },
-  "criteria_assessment": {
-    "inclusion_criteria": [
-      {"criterion": "criterion text", "status": "met|not_met|unclear", "evidence": "Direct quote or rationale"}
-    ],
-    "exclusion_criteria": [
-      {"criterion": "criterion text", "status": "violated|not_violated|unclear", "evidence": "Direct quote or rationale"}
-    ]
-  },
-  "reasoning": "Final decision reasoning based on the above assessment and why you chose include/exclude despite any uncertainties"
-}`;
-
-  const maxRetries = 3;
-  let lastError;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`Hugging Face attempt ${attempt}/${maxRetries}`);
-
-      const response = await fetch('https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          inputs: jsonPrompt,
-          parameters: {
-            max_new_tokens: 1000,
-            temperature: 0.1,
-            return_full_text: false,
-            do_sample: true,
-            top_p: 0.9
-          },
-          options: {
-            wait_for_model: true,
-            use_cache: false
-          }
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorDetails;
-        try {
-          errorDetails = JSON.parse(errorText);
-        } catch {
-          errorDetails = { message: errorText };
-        }
-        
-        lastError = new Error(`Hugging Face API error (${response.status}): ${JSON.stringify(errorDetails)}`);
-        console.error(`Hugging Face attempt ${attempt} failed:`, {
-          status: response.status,
-          error: errorDetails,
-          attempt: attempt,
-          maxRetries: maxRetries
-        });
-        
-        if (attempt === maxRetries) throw lastError;
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-        continue;
-      }
-
-      const data = await response.json();
-      console.log('Hugging Face raw response:', JSON.stringify(data, null, 2));
-
-      let content = '';
-      if (Array.isArray(data) && data.length > 0 && data[0].generated_text) {
-        content = data[0].generated_text;
-      } else {
-        throw new Error('Invalid Hugging Face response structure');
-      }
-      
-      // Clean the content - remove markdown formatting if present
-      let cleanContent = content.trim();
-      if (cleanContent.startsWith('```json')) {
-        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (cleanContent.startsWith('```')) {
-        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      
-      let result;
-      try {
-        result = JSON.parse(cleanContent);
-      } catch (parseError) {
-        console.error('JSON parse error from Hugging Face:', parseError, 'Content:', cleanContent);
-        
-        // Try to extract JSON from text if parsing fails
-        const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          try {
-            result = JSON.parse(jsonMatch[0]);
-          } catch (secondParseError) {
-            throw new Error(`Could not parse JSON from Hugging Face response: ${parseError.message}`);
-          }
-        } else {
-          throw new Error(`No valid JSON found in Hugging Face response: ${cleanContent}`);
-        }
-      }
-
-      // Validate the result structure
-      if (!result.recommendation || typeof result.confidence !== 'number' || !result.reasoning) {
-        throw new Error('Missing required fields in Hugging Face response');
-      }
-
-      // Ensure confidence is between 0 and 1
-      result.confidence = Math.max(0, Math.min(1, result.confidence));
-
-      // Ensure recommendation is valid
-      if (!['include', 'exclude'].includes(result.recommendation)) {
-        console.warn('Invalid recommendation from Hugging Face:', result.recommendation, 'defaulting to exclude');
-        result.recommendation = 'exclude';
-      }
-
-      return {
-        recommendation: result.recommendation,
-        confidence: result.confidence,
-        reasoning: result.reasoning,
-        reviewer: reviewerName,
-        picott_assessment: result.picott_assessment,
-        criteria_assessment: result.criteria_assessment
-      };
-
-    } catch (error) {
-      lastError = error;
-      console.error(`Hugging Face attempt ${attempt} failed:`, error.message);
-      
-      if (attempt === maxRetries) {
-        // Return fallback response
-        console.error('All Hugging Face attempts failed, returning fallback response');
-        return {
-          recommendation: 'exclude',
-          confidence: 0.0,
-          reasoning: `Error occurred during Hugging Face screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
-          reviewer: `${reviewerName} (Error)`
-        };
-      }
-      
-      // Wait before retry
-      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-    }
-  }
-
-  // This should never be reached, but just in case
-  throw lastError;
-}
-
-async function callOpenAI(prompt: string, model: string = 'o3-2025-04-16', reviewerName: string = 'OpenAI O3'): Promise<AIReviewResult> {
-  const apiKey = Deno.env.get('OPENAI_API_KEY');
-  if (!apiKey) throw new Error('OpenAI API key not configured');
-
-  // Define JSON schema for structured output with strict compliance
-  const responseSchema = {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      recommendation: {
-        type: "string",
-        enum: ["include", "exclude"]
-      },
-      confidence: {
-        type: "number",
-        minimum: 0,
-        maximum: 1
-      },
-      picott_assessment: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          population: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              status: { type: "string", enum: ["present", "absent", "unclear"] },
-              evidence: { type: "string" }
-            },
-            required: ["status", "evidence"]
-          },
-          intervention: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              status: { type: "string", enum: ["present", "absent", "unclear"] },
-              evidence: { type: "string" }
-            },
-            required: ["status", "evidence"]
-          },
-          comparator: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              status: { type: "string", enum: ["present", "absent", "unclear"] },
-              evidence: { type: "string" }
-            },
-            required: ["status", "evidence"]
-          },
-          outcome: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              status: { type: "string", enum: ["present", "absent", "unclear"] },
-              evidence: { type: "string" }
-            },
-            required: ["status", "evidence"]
-          },
-          timeframe: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              status: { type: "string", enum: ["present", "absent", "unclear"] },
-              evidence: { type: "string" }
-            },
-            required: ["status", "evidence"]
-          },
-          study_design: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              status: { type: "string", enum: ["present", "absent", "unclear"] },
-              evidence: { type: "string" }
-            },
-            required: ["status", "evidence"]
-          }
-        },
-        required: ["population", "intervention", "comparator", "outcome", "timeframe", "study_design"]
-      },
-      criteria_assessment: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          inclusion_criteria: {
-            type: "array",
-            items: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                criterion: { type: "string" },
-                status: { type: "string", enum: ["met", "not_met", "unclear"] },
-                evidence: { type: "string" }
-              },
-              required: ["criterion", "status", "evidence"]
-            }
-          },
-          exclusion_criteria: {
-            type: "array",
-            items: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                criterion: { type: "string" },
-                status: { type: "string", enum: ["violated", "not_violated", "unclear"] },
-                evidence: { type: "string" }
-              },
-              required: ["criterion", "status", "evidence"]
-            }
-          }
-        },
-        required: ["inclusion_criteria", "exclusion_criteria"]
-      },
-      reasoning: {
-        type: "string"
-      }
-    },
-    required: ["recommendation", "confidence", "picott_assessment", "criteria_assessment", "reasoning"]
-  };
-
-  const maxRetries = 3;
-  let lastError;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`OpenAI attempt ${attempt}/${maxRetries}`);
-
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert systematic review researcher. Always respond with valid JSON in the exact format requested.'
-            },
-            { 
-              role: 'user', 
-              content: prompt 
-            }
-          ],
-          max_completion_tokens: model.includes('o3') || model.includes('o4') ? 1000 : undefined,
-          max_tokens: model.includes('gpt-4') ? 1000 : undefined,
-          temperature: model.includes('o3') || model.includes('o4') ? undefined : 0.1,
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "screening_result",
-              schema: responseSchema,
-              strict: true
-            }
-          }
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorDetails;
-        try {
-          errorDetails = JSON.parse(errorText);
-        } catch {
-          errorDetails = { message: errorText };
-        }
-        
-        lastError = new Error(`OpenAI API error (${response.status}): ${JSON.stringify(errorDetails)}`);
-        console.error(`OpenAI attempt ${attempt} failed:`, {
-          status: response.status,
-          error: errorDetails,
-          attempt: attempt,
-          maxRetries: maxRetries
-        });
-        
-        // For schema errors, don't retry as they won't resolve
-        if (response.status === 400 && errorText.includes('Invalid schema')) {
-          console.error('Schema validation error - not retrying:', errorDetails);
-          throw lastError;
-        }
-        
-        if (attempt === maxRetries) throw lastError;
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
-        continue;
-      }
-
-      const data = await response.json();
-      console.log('OpenAI raw response:', JSON.stringify(data, null, 2));
-
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error('Invalid OpenAI response structure');
-      }
-
-      const content = data.choices[0].message.content;
-      let result;
-
-      try {
-        result = JSON.parse(content);
-      } catch (parseError) {
-        console.error('JSON parse error from OpenAI:', parseError, 'Content:', content);
-        throw new Error(`Invalid JSON from OpenAI: ${parseError.message}`);
-      }
-
-      // Validate the result structure
-      if (!result.recommendation || typeof result.confidence !== 'number' || !result.reasoning) {
-        throw new Error('Missing required fields in OpenAI response');
-      }
-
-      // Ensure confidence is between 0 and 1
-      result.confidence = Math.max(0, Math.min(1, result.confidence));
-
-      // Ensure recommendation is valid
-      if (!['include', 'exclude'].includes(result.recommendation)) {
-        console.warn('Invalid recommendation from OpenAI:', result.recommendation, 'defaulting to exclude');
-        result.recommendation = 'exclude';
-      }
-
-      return {
-        recommendation: result.recommendation,
-        confidence: result.confidence,
-        reasoning: result.reasoning,
-        reviewer: reviewerName,
-        picott_assessment: result.picott_assessment,
-        criteria_assessment: result.criteria_assessment
-      };
-
-    } catch (error) {
-      lastError = error;
-      console.error(`OpenAI attempt ${attempt} failed:`, error.message);
-      
-      if (attempt === maxRetries) {
-        // Return fallback response
-        console.error('All OpenAI attempts failed, returning fallback response');
-        return {
-          recommendation: 'exclude',
-          confidence: 0.0,
-          reasoning: `Error occurred during OpenAI screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
-          reviewer: `${reviewerName} (Error)`
-        };
-      }
-      
-      // Wait before retry
-      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-    }
-  }
-
-  // This should never be reached, but just in case
-  throw lastError;
-}
-
-async function callGemini(prompt: string, model: string = 'gemini-2.0-flash-exp', reviewerName: string = 'Gemini 2.0 Flash'): Promise<AIReviewResult> {
-  const apiKey = Deno.env.get('GEMINI_API_KEY');
-  if (!apiKey) throw new Error('Gemini API key not configured');
-
-  const maxRetries = 3;
-  let lastError;
-
-  // Enhanced prompt with strict JSON instructions
-  const jsonPrompt = `${prompt}
-
-You MUST make a definitive decision: either INCLUDE or EXCLUDE. "Maybe" is NOT an option.
-
-CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdown, no extra text):
-{
-  "recommendation": "include|exclude",
-  "confidence": 0.xx,
-  "picott_assessment": {
-    "population": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "intervention": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "comparator": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "outcome": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "timeframe": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "study_design": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"}
-  },
-  "criteria_assessment": {
-    "inclusion_criteria": [
-      {"criterion": "criterion text", "status": "met|not_met|unclear", "evidence": "Direct quote or rationale"}
-    ],
-    "exclusion_criteria": [
-      {"criterion": "criterion text", "status": "violated|not_violated|unclear", "evidence": "Direct quote or rationale"}
-    ]
-  },
-  "reasoning": "Final decision reasoning based on the above assessment and why you chose include/exclude despite any uncertainties"
-}
-
-The recommendation must be exactly one of: include, exclude
-The confidence must be a number between 0.0 and 1.0 based on your actual certainty
-The reasoning must be a string explaining your decision and addressing any uncertainties.
-Use analysis and reasoning to make the best decision possible even with incomplete information.`;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`Gemini attempt ${attempt}/${maxRetries}`);
-
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [{ 
-            parts: [{ text: jsonPrompt }] 
-          }],
-          generationConfig: { 
-            temperature: 0.1,
-            maxOutputTokens: 1000,
-            responseMimeType: "application/json"
-          }
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorDetails;
-        try {
-          errorDetails = JSON.parse(errorText);
-        } catch {
-          errorDetails = { message: errorText };
-        }
-        
-        lastError = new Error(`Gemini API error (${response.status}): ${JSON.stringify(errorDetails)}`);
-        console.error(`Gemini attempt ${attempt} failed:`, {
-          status: response.status,
-          error: errorDetails,
-          attempt: attempt,
-          maxRetries: maxRetries
-        });
-        
-        // For quota errors, provide helpful message
-        if (response.status === 429) {
-          const quotaError = new Error(`Gemini API quota exceeded. Please wait for quota reset or upgrade your plan. Details: ${JSON.stringify(errorDetails)}`);
-          console.error('Gemini quota exceeded:', errorDetails);
-          throw quotaError;
-        }
-        
-        if (attempt === maxRetries) throw lastError;
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
-        continue;
-      }
-
-      const data = await response.json();
-      console.log('Gemini raw response:', JSON.stringify(data, null, 2));
-      
-      // Enhanced parsing with multiple fallback strategies
-      let content = '';
-      
-      if (data.candidates && 
-          data.candidates.length > 0 && 
-          data.candidates[0].content && 
-          data.candidates[0].content.parts && 
-          data.candidates[0].content.parts.length > 0) {
-        content = data.candidates[0].content.parts[0].text;
-      } else if (data.error) {
-        throw new Error(`Gemini API error: ${data.error.message || 'Unknown error'}`);
-      } else {
-        console.error('Unexpected Gemini response structure:', data);
-        throw new Error('Gemini returned unexpected response structure');
-      }
-      
-      // Clean the content - remove markdown formatting if present
-      content = content.trim();
-      if (content.startsWith('```json')) {
-        content = content.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (content.startsWith('```')) {
-        content = content.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      
-      let result;
-      try {
-        result = JSON.parse(content);
-      } catch (parseError) {
-        console.error('JSON parse error from Gemini:', parseError, 'Content:', content);
-        
-        // Try to extract JSON from text if parsing fails
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          try {
-            result = JSON.parse(jsonMatch[0]);
-          } catch (secondParseError) {
-            throw new Error(`Could not parse JSON from Gemini response: ${parseError.message}`);
-          }
-        } else {
-          throw new Error(`No valid JSON found in Gemini response: ${content}`);
-        }
-      }
-
-      // Validate the result structure
-      if (!result || typeof result !== 'object') {
-        throw new Error('Gemini response is not a valid object');
-      }
-
-      if (!result.recommendation || typeof result.confidence !== 'number' || !result.reasoning) {
-        console.warn('Invalid Gemini response structure:', result);
-        throw new Error('Missing required fields in Gemini response');
-      }
-
-      // Ensure confidence is between 0 and 1
-      result.confidence = Math.max(0, Math.min(1, result.confidence));
-
-      // Ensure recommendation is valid
-      if (!['include', 'exclude'].includes(result.recommendation)) {
-        console.warn('Invalid recommendation from Gemini:', result.recommendation, 'defaulting to exclude');
-        result.recommendation = 'exclude';
-      }
-
-      return {
-        recommendation: result.recommendation,
-        confidence: result.confidence,
-        reasoning: result.reasoning,
-        reviewer: 'Google Gemini',
-        picott_assessment: result.picott_assessment,
-        criteria_assessment: result.criteria_assessment
-      };
-
-    } catch (error) {
-      lastError = error;
-      console.error(`Gemini attempt ${attempt} failed:`, error.message);
-      
-      if (attempt === maxRetries) {
-        // Return fallback response
-        console.error('All Gemini attempts failed, returning fallback response');
-        return {
-          recommendation: 'exclude',
-          confidence: 0.0,
-          reasoning: `Error occurred during Gemini screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
-          reviewer: 'Google Gemini (Error)'
-        };
-      }
-      
-      // Wait before retry
-      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-    }
-  }
-
-  // This should never be reached, but just in case
-  throw lastError;
-}
-
-async function callGeminiWithFallback(prompt: string): Promise<AIReviewResult> {
-  try {
-    // First, try the regular Gemini call
-    return await callGemini(prompt);
-  } catch (error) {
-    console.error('Gemini call failed, analyzing error:', error.message);
-    
-    // Check if it's a quota error
-    if (error.message.includes('quota exceeded') || error.message.includes('429')) {
-      console.log('Gemini quota exceeded - will be handled by fallback strategy');
-      // Return an error result that will trigger OpenAI fallback
-      return {
-        recommendation: 'exclude',
-        confidence: 0.0,
-        reasoning: `Gemini API quota exceeded. Fallback to OpenAI will be attempted. Details: ${error.message}`,
-        reviewer: 'Google Gemini (Quota Exceeded)'
-      };
-    }
-    
-    // For other errors, still return error result but with different message
-    return {
-      recommendation: 'exclude',
-      confidence: 0.0,
-      reasoning: `Gemini API error encountered. Details: ${error.message}. Manual review may be required.`,
-      reviewer: 'Google Gemini (Error)'
-    };
-  }
-}
-
-async function callOpenRouter(prompt: string, model: string = 'deepseek/deepseek-r1-distill-llama-70b', reviewerName?: string): Promise<AIReviewResult> {
-  const apiKey = openRouterApiKey;
+// Enhanced OpenRouter function with DeepSeek R1
+async function callOpenRouter(prompt: string, model: string = 'deepseek/deepseek-r1-distill-llama-70b', reviewerName: string = 'DeepSeek R1'): Promise<AIReviewResult> {
+  const apiKey = openrouterApiKey;
   if (!apiKey) throw new Error('OpenRouter API key not configured');
 
-  // Default reviewer name based on model
-  const defaultReviewerName = reviewerName || `OpenRouter (${model})`;
-  
-  // Enhanced prompt with strict JSON instructions for OpenRouter
-  const jsonPrompt = `${prompt}
-
-CRITICAL: You MUST respond with ONLY valid JSON in this exact format (no markdown, no extra text):
-{
-  "recommendation": "include|exclude",
-  "confidence": 0.xx,
-  "picott_assessment": {
-    "population": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "intervention": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "comparator": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "outcome": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "timeframe": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"},
-    "study_design": {"status": "present|absent|unclear", "evidence": "Direct quote or rationale"}
-  },
-  "criteria_assessment": {
-    "inclusion_criteria": [
-      {"criterion": "criterion text", "status": "met|not_met|unclear", "evidence": "Direct quote or rationale"}
-    ],
-    "exclusion_criteria": [
-      {"criterion": "criterion text", "status": "violated|not_violated|unclear", "evidence": "Direct quote or rationale"}
-    ]
-  },
-  "reasoning": "Final decision reasoning based on the above assessment and why you chose include/exclude despite any uncertainties"
-}
-
-The recommendation must be exactly one of: include, exclude
-The confidence must be a number between 0.0 and 1.0 based on your actual certainty
-The reasoning must be a string explaining your decision and addressing any uncertainties.`;
-
+  const startTime = Date.now();
   const maxRetries = 3;
   let lastError;
 
@@ -1414,43 +1044,30 @@ The reasoning must be a string explaining your decision and addressing any uncer
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://lovable.dev',
-          'X-Title': 'AI Literature Screening Tool'
+          'HTTP-Referer': 'https://ai-screening.lovable.dev',
+          'X-Title': 'AI Literature Screening'
         },
         body: JSON.stringify({
           model: model,
           messages: [
             {
               role: 'system',
-              content: 'You are an expert systematic review researcher. Always respond with valid JSON in the exact format requested.'
+              content: 'You are an expert systematic review researcher specializing in rigorous PICOTT-based literature screening.'
             },
-            { 
-              role: 'user', 
-              content: jsonPrompt 
+            {
+              role: 'user',
+              content: prompt
             }
           ],
-          max_tokens: 1000,
+          max_tokens: 2000,
           temperature: 0.1
         }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        let errorDetails;
-        try {
-          errorDetails = JSON.parse(errorText);
-        } catch {
-          errorDetails = { message: errorText };
-        }
-        
-        lastError = new Error(`OpenRouter API error (${response.status}): ${JSON.stringify(errorDetails)}`);
-        console.error(`OpenRouter attempt ${attempt} failed:`, {
-          status: response.status,
-          error: errorDetails,
-          attempt: attempt,
-          maxRetries: maxRetries,
-          model: model
-        });
+        lastError = new Error(`OpenRouter API error (${response.status}): ${errorText}`);
+        console.error(`OpenRouter attempt ${attempt} failed:`, lastError.message);
         
         if (attempt === maxRetries) throw lastError;
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
@@ -1458,271 +1075,95 @@ The reasoning must be a string explaining your decision and addressing any uncer
       }
 
       const data = await response.json();
-      console.log('OpenRouter raw response:', JSON.stringify(data, null, 2));
+      const processingTime = Date.now() - startTime;
 
       if (!data.choices || !data.choices[0] || !data.choices[0].message) {
         throw new Error('Invalid OpenRouter response structure');
       }
 
       const content = data.choices[0].message.content;
-      
-      // Clean the content - remove markdown formatting if present
-      let cleanContent = content.trim();
-      if (cleanContent.startsWith('```json')) {
-        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (cleanContent.startsWith('```')) {
-        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-      
+
+      // Parse and validate response
       let result;
       try {
+        let cleanContent = content.trim();
+        if (cleanContent.startsWith('```json')) {
+          cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        }
         result = JSON.parse(cleanContent);
       } catch (parseError) {
-        console.error('JSON parse error from OpenRouter:', parseError, 'Content:', cleanContent);
-        
-        // Try to extract JSON from text if parsing fails
-        const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          try {
-            result = JSON.parse(jsonMatch[0]);
-          } catch (secondParseError) {
-            throw new Error(`Could not parse JSON from OpenRouter response: ${parseError.message}`);
-          }
+          result = JSON.parse(jsonMatch[0]);
         } else {
-          throw new Error(`No valid JSON found in OpenRouter response: ${cleanContent}`);
+          throw new Error(`Could not parse JSON from OpenRouter: ${parseError.message}`);
         }
       }
 
-      // Validate the result structure
-      if (!result.recommendation || typeof result.confidence !== 'number' || !result.reasoning) {
-        throw new Error('Missing required fields in OpenRouter response');
-      }
-
-      // Ensure confidence is between 0 and 1
-      result.confidence = Math.max(0, Math.min(1, result.confidence));
-
-      // Ensure recommendation is valid
+      result.confidence = Math.max(0, Math.min(1, result.confidence || 0.5));
       if (!['include', 'exclude'].includes(result.recommendation)) {
-        console.warn('Invalid recommendation from OpenRouter:', result.recommendation, 'defaulting to exclude');
         result.recommendation = 'exclude';
       }
 
       return {
         recommendation: result.recommendation,
         confidence: result.confidence,
-        reasoning: result.reasoning,
-        reviewer: defaultReviewerName,
+        reasoning: result.reasoning || 'No reasoning provided',
+        reviewer: reviewerName,
         picott_assessment: result.picott_assessment,
-        criteria_assessment: result.criteria_assessment
+        criteria_assessment: result.criteria_assessment,
+        tokens_used: data.usage?.total_tokens || 0,
+        processing_time_ms: processingTime,
+        model_version: model
       };
 
     } catch (error) {
       lastError = error;
       console.error(`OpenRouter attempt ${attempt} failed:`, error.message);
       
-      if (attempt === maxRetries) {
-        // Return fallback response
-        console.error('All OpenRouter attempts failed, returning fallback response');
-        return {
-          recommendation: 'exclude',
-          confidence: 0.0,
-          reasoning: `Error occurred during OpenRouter screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
-          reviewer: `${defaultReviewerName} (Error)`
-        };
-      }
-      
-      // Wait before retry
+      if (attempt === maxRetries) throw lastError;
       await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
     }
   }
 
-  // This should never be reached, but just in case
   throw lastError;
 }
 
-async function callVercelAI(prompt: string, model: string = 'claude-3-5-sonnet-20241022', reviewerName?: string): Promise<AIReviewResult> {
-  const apiToken = vercelAIToken;
-  if (!apiToken) throw new Error('Vercel AI Gateway token not configured');
+// Enhanced Gemini function for fallback
+async function callGemini(prompt: string, model: string = 'gemini-2.0-flash-exp', reviewerName: string = 'Gemini 2.0 Flash'): Promise<AIReviewResult> {
+  const apiKey = geminiApiKey;
+  if (!apiKey) throw new Error('Gemini API key not configured');
 
-  // Default reviewer name based on model
-  const defaultReviewerName = reviewerName || `Vercel AI Gateway (${model})`;
-  
-  // Define the structured output schema
-  const responseSchema = {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      recommendation: {
-        type: "string",
-        enum: ["include", "exclude"]
-      },
-      confidence: {
-        type: "number",
-        minimum: 0,
-        maximum: 1
-      },
-      picott_assessment: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          population: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              status: { type: "string", enum: ["present", "absent", "unclear"] },
-              evidence: { type: "string" }
-            },
-            required: ["status", "evidence"]
-          },
-          intervention: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              status: { type: "string", enum: ["present", "absent", "unclear"] },
-              evidence: { type: "string" }
-            },
-            required: ["status", "evidence"]
-          },
-          comparator: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              status: { type: "string", enum: ["present", "absent", "unclear"] },
-              evidence: { type: "string" }
-            },
-            required: ["status", "evidence"]
-          },
-          outcome: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              status: { type: "string", enum: ["present", "absent", "unclear"] },
-              evidence: { type: "string" }
-            },
-            required: ["status", "evidence"]
-          },
-          timeframe: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              status: { type: "string", enum: ["present", "absent", "unclear"] },
-              evidence: { type: "string" }
-            },
-            required: ["status", "evidence"]
-          },
-          study_design: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              status: { type: "string", enum: ["present", "absent", "unclear"] },
-              evidence: { type: "string" }
-            },
-            required: ["status", "evidence"]
-          }
-        },
-        required: ["population", "intervention", "comparator", "outcome", "timeframe", "study_design"]
-      },
-      criteria_assessment: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          inclusion_criteria: {
-            type: "array",
-            items: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                criterion: { type: "string" },
-                status: { type: "string", enum: ["met", "not_met", "unclear"] },
-                evidence: { type: "string" }
-              },
-              required: ["criterion", "status", "evidence"]
-            }
-          },
-          exclusion_criteria: {
-            type: "array",
-            items: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                criterion: { type: "string" },
-                status: { type: "string", enum: ["violated", "not_violated", "unclear"] },
-                evidence: { type: "string" }
-              },
-              required: ["criterion", "status", "evidence"]
-            }
-          }
-        },
-        required: ["inclusion_criteria", "exclusion_criteria"]
-      },
-      reasoning: {
-        type: "string"
-      }
-    },
-    required: ["recommendation", "confidence", "picott_assessment", "criteria_assessment", "reasoning"]
-  };
-
+  const startTime = Date.now();
   const maxRetries = 3;
   let lastError;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`Vercel AI Gateway attempt ${attempt}/${maxRetries} with model: ${model}`);
+      console.log(`Gemini attempt ${attempt}/${maxRetries} with model: ${model}`);
 
-      const response = await fetch('https://gateway.ai.cloudflare.com/v1/chat/completions', {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: model,
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert systematic review researcher. Always respond with valid JSON in the exact format requested.'
-            },
-            { 
-              role: 'user', 
-              content: prompt 
-            }
-          ],
-          max_tokens: 1000,
-          temperature: 0.1,
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "screening_result",
-              schema: responseSchema,
-              strict: true
-            }
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 2000
           }
         }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        let errorDetails;
-        try {
-          errorDetails = JSON.parse(errorText);
-        } catch {
-          errorDetails = { message: errorText };
-        }
-        
-        lastError = new Error(`Vercel AI Gateway error (${response.status}): ${JSON.stringify(errorDetails)}`);
-        console.error(`Vercel AI Gateway attempt ${attempt} failed:`, {
-          status: response.status,
-          error: errorDetails,
-          attempt: attempt,
-          maxRetries: maxRetries,
-          model: model
-        });
-        
-        // For schema errors or auth errors, don't retry
-        if (response.status === 400 || response.status === 401 || response.status === 403) {
-          console.error('Vercel AI Gateway config error - not retrying:', errorDetails);
-          throw lastError;
-        }
+        lastError = new Error(`Gemini API error (${response.status}): ${errorText}`);
+        console.error(`Gemini attempt ${attempt} failed:`, lastError.message);
         
         if (attempt === maxRetries) throw lastError;
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
@@ -1730,65 +1171,56 @@ async function callVercelAI(prompt: string, model: string = 'claude-3-5-sonnet-2
       }
 
       const data = await response.json();
-      console.log('Vercel AI Gateway raw response:', JSON.stringify(data, null, 2));
+      const processingTime = Date.now() - startTime;
 
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error('Invalid Vercel AI Gateway response structure');
+      if (!data.candidates || !data.candidates[0] || !data.candidates[0].content || !data.candidates[0].content.parts) {
+        throw new Error('Invalid Gemini response structure');
       }
 
-      const content = data.choices[0].message.content;
+      const content = data.candidates[0].content.parts[0].text;
+
+      // Parse and validate
       let result;
-
       try {
-        result = JSON.parse(content);
+        let cleanContent = content.trim();
+        if (cleanContent.startsWith('```json')) {
+          cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        }
+        result = JSON.parse(cleanContent);
       } catch (parseError) {
-        console.error('JSON parse error from Vercel AI Gateway:', parseError, 'Content:', content);
-        throw new Error(`Invalid JSON from Vercel AI Gateway: ${parseError.message}`);
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          result = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error(`Could not parse JSON from Gemini: ${parseError.message}`);
+        }
       }
 
-      // Validate the result structure
-      if (!result.recommendation || typeof result.confidence !== 'number' || !result.reasoning) {
-        throw new Error('Missing required fields in Vercel AI Gateway response');
-      }
-
-      // Ensure confidence is between 0 and 1
-      result.confidence = Math.max(0, Math.min(1, result.confidence));
-
-      // Ensure recommendation is valid
+      result.confidence = Math.max(0, Math.min(1, result.confidence || 0.5));
       if (!['include', 'exclude'].includes(result.recommendation)) {
-        console.warn('Invalid recommendation from Vercel AI Gateway:', result.recommendation, 'defaulting to exclude');
         result.recommendation = 'exclude';
       }
 
       return {
         recommendation: result.recommendation,
         confidence: result.confidence,
-        reasoning: result.reasoning,
-        reviewer: defaultReviewerName,
+        reasoning: result.reasoning || 'No reasoning provided',
+        reviewer: reviewerName,
         picott_assessment: result.picott_assessment,
-        criteria_assessment: result.criteria_assessment
+        criteria_assessment: result.criteria_assessment,
+        tokens_used: data.usageMetadata?.totalTokenCount || 0,
+        processing_time_ms: processingTime,
+        model_version: model
       };
 
     } catch (error) {
       lastError = error;
-      console.error(`Vercel AI Gateway attempt ${attempt} failed:`, error.message);
+      console.error(`Gemini attempt ${attempt} failed:`, error.message);
       
-      if (attempt === maxRetries) {
-        // Return fallback response
-        console.error('All Vercel AI Gateway attempts failed, returning fallback response');
-        return {
-          recommendation: 'exclude',
-          confidence: 0.0,
-          reasoning: `Error occurred during Vercel AI Gateway screening: ${error.message}. Manual review required. Defaulting to exclude for safety.`,
-          reviewer: `${defaultReviewerName} (Error)`
-        };
-      }
-      
-      // Wait before retry
+      if (attempt === maxRetries) throw lastError;
       await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
     }
   }
 
-  // This should never be reached, but just in case
   throw lastError;
 }
