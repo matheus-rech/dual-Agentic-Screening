@@ -65,7 +65,8 @@ export default {
 				},
 				demo: {
 					bg: 'hsl(var(--demo-bg))',
-					border: 'hsl(var(--demo-border))'
+					border: 'hsl(var(--demo-border))',
+					accent: 'hsl(var(--demo-accent))'
 				},
 				success: 'hsl(var(--success))',
 				warning: 'hsl(var(--warning))',

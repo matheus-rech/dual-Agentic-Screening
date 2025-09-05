@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { LogIn, RefreshCw } from "lucide-react";
+import { LogIn, RefreshCw, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import Header from "@/components/Header";
@@ -100,13 +100,18 @@ const Index = () => {
           </div>
         ) : (
           <div className="text-center py-16">
+            <div className="mb-6">
+              <div className="w-16 h-16 bg-gradient-to-br from-primary to-primary/80 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl">
+                <Brain className="w-8 h-8 text-primary-foreground" />
+              </div>
+            </div>
             <h1 className="text-4xl font-bold text-foreground mb-4">
-              Welcome to AI Research Screening
+              AI Research Screening Platform
             </h1>
-            <p className="text-xl text-muted-foreground mb-8">
-              Advanced systematic review tools powered by dual AI screening
+            <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
+              Advanced systematic review automation powered by dual AI reasoning models with conflict detection and evidence-based screening
             </p>
-            <Button asChild size="lg">
+            <Button asChild size="lg" className="shadow-lg">
               <Link to="/auth">
                 <LogIn className="w-4 h-4 mr-2" />
                 Get Started
