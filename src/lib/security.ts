@@ -101,7 +101,7 @@ export function validateURL(url: string): boolean {
 
 // DOI validation
 export function validateDOI(doi: string): boolean {
-  const doiRegex = /^10\.\d{4,9}\/[.-_;()/:A-Za-z0-9]+$/;
+  const doiRegex = /^10\.\d{4,}\/[.-_;()/:A-Za-z0-9]+$/;
   return doiRegex.test(doi);
 }
 
