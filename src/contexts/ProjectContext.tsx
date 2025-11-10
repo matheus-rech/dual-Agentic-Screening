@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import type { ParsedReference } from '@/services/fileParserService';
 
+interface CriteriaData {
+  // TODO: Define properties as needed
+}
 interface ProjectData {
   id?: string;
   name: string;
