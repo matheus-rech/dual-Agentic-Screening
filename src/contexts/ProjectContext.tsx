@@ -11,6 +11,9 @@ interface ProjectData {
   importFormat: string;
   uploadedFile?: File;
   references?: ParsedReference[];
+  status?: string;
+  criteria?: CriteriaData;
+  total_references?: number;
 }
 
 interface ProjectContextType {
