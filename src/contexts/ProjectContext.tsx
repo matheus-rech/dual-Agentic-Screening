@@ -1,29 +1,16 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
+import type { ParsedReference } from '@/services/fileParserService';
 
 interface CriteriaData {
-  population?: string;
-  intervention?: string;
-  comparator?: string;
-  outcome?: string;
-  study_designs?: string[];
-  timeframe_start?: string;
-  timeframe_end?: string;
-  timeframe_description?: string;
-  inclusion_criteria?: string[];
-  exclusion_criteria?: string[];
-  use_advanced_ai?: boolean;
-  dual_ai_review?: boolean;
+  // TODO: Define properties as needed
 }
-
 interface ProjectData {
   id?: string;
   name: string;
   description?: string;
   importFormat: string;
   uploadedFile?: File;
-  references?: any[];
+  references?: ParsedReference[];
   status?: string;
   criteria?: CriteriaData;
   total_references?: number;

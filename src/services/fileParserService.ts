@@ -1,4 +1,4 @@
-interface ParsedReference {
+export interface ParsedReference {
   title: string;
   authors: string;
   abstract?: string;
@@ -82,30 +82,36 @@ export class FileParserService {
         const value = valueParts.join(' - ').trim();
 
         switch (tag.trim()) {
-          case 'TI':
+          case 'TI': {
             reference.title = value;
             break;
-          case 'AU':
+          }
+          case 'AU': {
             reference.authors = reference.authors ? `${reference.authors}; ${value}` : value;
             break;
+          }
           case 'JO':
-          case 'JF':
+          case 'JF': {
             reference.journal = value;
             break;
+          }
           case 'PY': {
             const yearMatch = value.match(/(\d{4})/);
             if (yearMatch) reference.year = parseInt(yearMatch[1]);
             break;
           }
-          case 'DO':
+          case 'DO': {
             reference.doi = value;
             break;
-          case 'AB':
+          }
+          case 'AB': {
             reference.abstract = value;
             break;
-          case 'UR':
+          }
+          case 'UR': {
             reference.url = value;
             break;
+          }
         }
       });
 
@@ -171,8 +177,8 @@ export class FileParserService {
         } else if (line.startsWith('AB  - ')) {
           reference.abstract = line.substring(6);
         } else if (line.startsWith('LID - ')) {
-          const doiMatch = line.substring(6).match(/([^[\s]+)/);
-          if (doiMatch) reference.doi = doiMatch[1];
+          const doiMatch = line.substring(6).match(/\S+/);
+          if (doiMatch) reference.doi = doiMatch[0];
         } else if (line.startsWith('PMID- ')) {
           reference.pmid = line.substring(6);
         }
@@ -192,7 +198,7 @@ export class FileParserService {
     const references: ParsedReference[] = [];
     
     // Simple heuristic: assume each non-empty line might be a title
-    lines.forEach((line, index) => {
+    lines.forEach((line) => {
       if (line.trim() && line.length > 10) {
         references.push({
           title: line.trim(),
