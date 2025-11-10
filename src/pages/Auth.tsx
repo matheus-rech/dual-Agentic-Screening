@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, LogIn, UserPlus } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, LogIn, UserPlus, Shield, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { SecureInput } from '@/components/ui/secure-input';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { validateEmail } from '@/lib/security';
 
 const AuthPage = () => {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -165,6 +167,15 @@ const AuthPage = () => {
           </p>
         </div>
 
+        {/* Security Notice */}
+        <Alert className="mb-6 border-blue-200 bg-blue-50">
+          <Shield className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="text-blue-800">
+            <strong>Enhanced Security:</strong> This application uses secure authentication with input validation, 
+            rate limiting, and encrypted data protection.
+          </AlertDescription>
+        </Alert>
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -186,7 +197,7 @@ const AuthPage = () => {
               {isSignUp && (
                 <div>
                   <Label htmlFor="fullName">Full Name</Label>
-                  <Input
+                  <SecureInput
                     id="fullName"
                     type="text"
                     value={fullName}
@@ -194,6 +205,7 @@ const AuthPage = () => {
                     placeholder="Enter your full name"
                     required={isSignUp}
                     disabled={isLoading}
+                    sanitize={true}
                   />
                 </div>
               )}
@@ -201,8 +213,8 @@ const AuthPage = () => {
               <div>
                 <Label htmlFor="email">Email</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground z-10" />
+                  <SecureInput
                     id="email"
                     type="email"
                     value={email}
@@ -211,6 +223,12 @@ const AuthPage = () => {
                     className="pl-10"
                     required
                     disabled={isLoading}
+                    validateType="email"
+                    onValidationChange={(isValid, error) => {
+                      if (!isValid && error) {
+                        console.log('Email validation error:', error);
+                      }
+                    }}
                   />
                 </div>
               </div>
@@ -218,8 +236,8 @@ const AuthPage = () => {
               <div>
                 <Label htmlFor="password">Password</Label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground z-10" />
+                  <SecureInput
                     id="password"
                     type={showPassword ? "text" : "password"}
                     value={password}
@@ -234,7 +252,7 @@ const AuthPage = () => {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent z-10"
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={isLoading}
                   >

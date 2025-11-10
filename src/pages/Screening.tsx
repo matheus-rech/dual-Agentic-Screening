@@ -9,8 +9,12 @@ import ScreeningLogs from '@/components/ScreeningLogs';
 import ScreeningAnalytics from '@/components/ScreeningAnalytics';
 import BulkReviewPanel from '@/components/BulkReviewPanel';
 import ExportPanel from '@/components/ExportPanel';
-import ScreeningProgress from '@/components/ScreeningProgress';
+
 import ReasoningDisplay from '@/components/ReasoningDisplay';
+import ReferenceDetailsPanel from '@/components/ReferenceDetailsPanel';
+import { SystemStatusDashboard } from '@/components/SystemStatusDashboard';
+import { EnhancedErrorDisplay } from '@/components/EnhancedErrorDisplay';
+import { ScreeningReadinessCheck } from '@/components/ScreeningReadinessCheck';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -23,7 +27,7 @@ import { useEnhancedScreening } from '@/hooks/useEnhancedScreening';
 import { useProject } from '@/contexts/ProjectContext';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
-const ScreeningDashboard = () => {
+const Screening = () => {
   const [references, setReferences] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [criteriaData, setCriteriaData] = useState(null);
@@ -33,6 +37,8 @@ const ScreeningDashboard = () => {
   const [hasNewAnalytics, setHasNewAnalytics] = useState(false);
   const [hasNewLogs, setHasNewLogs] = useState(false);
   const [lastResultsCount, setLastResultsCount] = useState(0);
+  const [initializationError, setInitializationError] = useState<string | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
   
   const { toast } = useToast();
   const { projectData } = useProject();
@@ -50,13 +56,29 @@ const ScreeningDashboard = () => {
   } = useEnhancedScreening();
 
   useEffect(() => {
-    if (projectData?.id) {
-      loadReferences();
-      loadProject();
-    } else {
-      // If no project in context, try to load the most recent project
-      loadMostRecentProject();
-    }
+    const initializeScreen = async () => {
+      setIsInitializing(true);
+      setInitializationError(null);
+      
+      try {
+        console.log('🚀 Initializing Screening component with project:', projectData?.id);
+        if (projectData?.id) {
+          console.log('📂 Loading project from context:', projectData.id);
+          await Promise.all([loadReferences(), loadProject()]);
+        } else {
+          // If no project in context, try to load the most recent project
+          console.log('📂 Loading most recent project');
+          await loadMostRecentProject();
+        }
+      } catch (error) {
+        console.error('Initialization error:', error);
+        setInitializationError(error instanceof Error ? error.message : 'Failed to initialize screening');
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+
+    initializeScreen();
   }, [projectData]);
 
   // Auto-start screening if the autoStart flag is present and conditions are met
@@ -152,22 +174,9 @@ const ScreeningDashboard = () => {
       if (error) throw error;
       setSelectedProject(data);
       
-      // Check if criteria are embedded in the project or load from separate table
-      if (data.population || data.intervention || data.outcome || data.comparator) {
-        // Use embedded criteria from project
-        const embeddedCriteria = {
-          population: data.population,
-          intervention: data.intervention,
-          comparator: data.comparator,
-          outcome: data.outcome,
-          studyDesigns: data.study_designs || []
-        };
-        console.log('Using embedded criteria:', embeddedCriteria);
-        setCriteriaData(embeddedCriteria);
-      } else {
-        // Load criteria from separate table
-        await loadCriteriaData(projectId);
-      }
+      // Always load complete criteria from screening_criteria table
+      // This ensures we get inclusion/exclusion criteria along with PICO elements
+      await loadCriteriaData(projectId);
     } catch (error) {
       console.error('Error loading project:', error);
     }
@@ -175,21 +184,44 @@ const ScreeningDashboard = () => {
 
   const loadCriteriaData = async (projectId: string) => {
     try {
+      console.log('🔍 Loading criteria for project:', projectId);
       const { data: criteria, error } = await supabase
         .from('screening_criteria')
         .select('*')
         .eq('project_id', projectId)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
+        setInitializationError(`Failed to load screening criteria: ${error.message}`);
         throw error;
       }
 
       if (criteria) {
+        console.log('✅ Criteria loaded from DB:', criteria);
         setCriteriaData(criteria);
+        const inclusionCount = Array.isArray(criteria.inclusion_criteria) ? criteria.inclusion_criteria.length : 0;
+        const exclusionCount = Array.isArray(criteria.exclusion_criteria) ? criteria.exclusion_criteria.length : 0;
+        toast({
+          title: "Criteria loaded",
+          description: `Loaded ${inclusionCount} inclusion and ${exclusionCount} exclusion criteria`,
+        });
+      } else {
+        console.log('❌ No criteria found for project:', projectId);
+        // Try to load from project context as fallback
+        if (projectData?.criteria) {
+          console.log('📋 Using criteria from project context');
+          setCriteriaData(projectData.criteria);
+        } else {
+          toast({
+            title: "No screening criteria found",
+            description: "Please define screening criteria to enable AI analysis",
+            variant: "destructive"
+          });
+        }
       }
     } catch (error) {
       console.error('Error loading criteria:', error);
+      setInitializationError(error instanceof Error ? error.message : 'Failed to load criteria');
     }
   };
 
@@ -230,6 +262,13 @@ const ScreeningDashboard = () => {
       return;
     }
 
+    // Add debug logging
+    console.log('DEBUG: Starting screening process', {
+      referencesCount: references.length,
+      criteria: criteriaData,
+      projectId: selectedProject?.id
+    });
+
     try {
       await startScreening(
         references.map(ref => ({
@@ -259,10 +298,10 @@ const ScreeningDashboard = () => {
         loadReferences(); // Reload to get updated results
       }
     } catch (error) {
-      console.error('Error starting screening:', error);
+      console.error('DEBUG: Error starting screening:', error);
       toast({
         title: "Screening Failed",
-        description: 'Failed to start screening process',
+        description: `Failed to start screening: ${error.message}`,
         variant: "destructive",
       });
     }
@@ -340,95 +379,78 @@ const ScreeningDashboard = () => {
           </p>
         </div>
 
+        {/* System Status Dashboard */}
+        <SystemStatusDashboard 
+          projectId={selectedProject?.id}
+          criteriaData={criteriaData}
+          references={references}
+          onRetry={() => window.location.reload()}
+        />
+
+        {/* Initialization Error Display */}
+        {initializationError && (
+          <EnhancedErrorDisplay 
+            error={initializationError}
+            context="System Initialization"
+            onRetry={() => {
+              setInitializationError(null);
+              window.location.reload();
+            }}
+            onDismiss={() => setInitializationError(null)}
+          />
+        )}
+
+        {/* Screening Error Display */}
+        {screeningError && (
+          <EnhancedErrorDisplay 
+            error={screeningError}
+            context="AI Screening Process"
+            onRetry={() => {
+              resetScreening();
+              handleStartScreening();
+            }}
+            onDismiss={() => resetScreening()}
+          />
+        )}
+
         {/* Criteria Summary */}
-        {criteriaData && (
+        {criteriaData ? (
           <div className="mb-8">
             <CriteriaSummary 
               criteria={criteriaData} 
               onEdit={() => navigate('/criteria')}
             />
           </div>
+        ) : !isInitializing && (
+          <div className="mb-8">
+            <Card className="bg-muted/50 border-warning">
+              <CardContent className="pt-6">
+                <div className="text-center">
+                  <AlertCircle className="w-8 h-8 text-warning mx-auto mb-2" />
+                  <p className="text-foreground font-medium">No screening criteria defined</p>
+                  <p className="text-muted-foreground text-sm mb-4">
+                    Define your screening criteria to enable AI-powered analysis
+                  </p>
+                  <Button onClick={() => navigate('/criteria')} variant="outline">
+                    <Edit className="w-4 h-4 mr-2" />
+                    Define Criteria
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )}
 
-        {/* Screening Controls */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-primary" />
-              Screening Control Panel
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">
-                    Ready to screen {references.length} references
-                  </p>
-                  {!criteriaData && (
-                    <div className="flex items-center gap-2 text-amber-600">
-                      <AlertCircle className="w-4 h-4" />
-                      <span className="text-sm">Define criteria before screening</span>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => navigate('/criteria')}
-                      >
-                        <Edit className="w-4 h-4 mr-2" />
-                        Define Criteria
-                      </Button>
-                    </div>
-                  )}
-                </div>
-                
-                <Button 
-                  onClick={handleStartScreening}
-                  disabled={isScreening || references.length === 0 || !criteriaData}
-                  size="lg"
-                >
-                  {isScreening ? (
-                    <>
-                      <div className="animate-spin w-4 h-4 mr-2 border-2 border-current border-t-transparent rounded-full" />
-                      Screening...
-                    </>
-                  ) : screeningResults.length > 0 ? (
-                    <>
-                      <CheckCircle className="w-4 h-4 mr-2" />
-                      Screening Complete
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-4 h-4 mr-2" />
-                      Start AI Screening
-                    </>
-                  )}
-                </Button>
-                
-                {screeningError && (
-                  <div className="text-sm text-destructive mt-2">
-                    Error: {screeningError}
-                  </div>
-                )}
-              </div>
-
-              {/* Live Progress Display */}
-              <ScreeningProgress
-                isVisible={isScreening || screeningResults.length > 0}
-                stats={{
-                  current: progress.stats.current,
-                  total: progress.stats.total,
-                  percentage: progress.stats.percentage,
-                  included: progress.stats.included,
-                  excluded: progress.stats.excluded,
-                  conflicts: progress.stats.conflicts,
-                  estimatedTimeRemaining: progress.stats.estimatedTimeRemaining || null
-                }}
-                currentReference={progress.currentReference}
-                isComplete={!isScreening && screeningResults.length > 0}
-              />
-            </div>
-          </CardContent>
-        </Card>
+        {/* Screening Readiness Check */}
+        <ScreeningReadinessCheck 
+          projectId={selectedProject?.id}
+          criteriaData={criteriaData}
+          references={references}
+          isScreening={isScreening}
+          onStartScreening={handleStartScreening}
+          estimatedCost={references.length * 0.05} // Rough estimate
+          estimatedTime={`${Math.ceil(references.length * 0.1)} minutes`}
+        />
 
 
         {/* Live Reasoning Display */}
@@ -438,6 +460,11 @@ const ScreeningDashboard = () => {
           reasoningSteps={progress.reasoningSteps}
           progress={progress.stats}
         />
+
+        {/* Reference Details with AI Reasoning */}
+        {!isScreening && references.length > 0 && (
+          <ReferenceDetailsPanel references={references} />
+        )}
 
         {/* Results Summary */}
         <Card className="mb-8">
@@ -627,4 +654,4 @@ const ScreeningDashboard = () => {
   );
 };
 
-export default ScreeningDashboard;
+export default Screening;

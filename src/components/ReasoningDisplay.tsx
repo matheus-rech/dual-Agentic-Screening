@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Progress } from '@/components/ui/progress';
+import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, XCircle, AlertCircle, Brain, Zap } from 'lucide-react';
 
@@ -40,19 +40,39 @@ const ReasoningDisplay: React.FC<ReasoningDisplayProps> = ({
   progress
 }) => {
   const [autoScroll, setAutoScroll] = useState(true);
+  const [timelinePosition, setTimelinePosition] = useState(0);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [groupedSteps, setGroupedSteps] = useState<{ [referenceId: string]: ReasoningStep[] }>({});
 
+  // Calculate timeline cutoff based on position
+  const timelineSteps = useMemo(() => {
+    if (reasoningSteps.length === 0) return reasoningSteps;
+    
+    const totalSteps = reasoningSteps.length;
+    const cutoffIndex = Math.floor((timelinePosition / 100) * totalSteps);
+    return reasoningSteps.slice(0, cutoffIndex);
+  }, [reasoningSteps, timelinePosition]);
+
+  // Filter reasoning steps by timeline position for display
+  const filteredByTimeline = useMemo(() => {
+    return timelineSteps;
+  }, [timelineSteps]);
+
   // Group reasoning steps by reference for better organization
   useEffect(() => {
-    const grouped = reasoningSteps.reduce((acc, step) => {
+    const grouped = filteredByTimeline.reduce((acc, step) => {
       const refId = step.id.split('-')[0] || 'unknown';
       if (!acc[refId]) acc[refId] = [];
       acc[refId].push(step);
       return acc;
     }, {} as { [referenceId: string]: ReasoningStep[] });
     setGroupedSteps(grouped);
-  }, [reasoningSteps]);
+  }, [filteredByTimeline]);
+
+  // Auto-update timeline position based on actual progress
+  useEffect(() => {
+    setTimelinePosition(progress.percentage);
+  }, [progress.percentage]);
 
   // Auto-scroll to bottom when new steps are added
   useEffect(() => {
@@ -106,9 +126,16 @@ const ReasoningDisplay: React.FC<ReasoningDisplayProps> = ({
         
         {/* Progress Bar */}
         <div className="space-y-2">
-          <Progress value={progress.percentage} className="h-2" />
-          <div className="text-xs text-muted-foreground">
-            Processing reference {progress.current} of {progress.total} ({Math.round(progress.percentage)}%)
+          <Slider
+            value={[timelinePosition]}
+            onValueChange={([value]) => setTimelinePosition(value)}
+            max={100}
+            step={1}
+            className="h-2"
+          />
+          <div className="text-xs text-muted-foreground flex justify-between">
+            <span>Timeline: {Math.round(timelinePosition)}% of screening process</span>
+            <span>{filteredByTimeline.length} reasoning steps shown</span>
           </div>
         </div>
 

@@ -44,10 +44,10 @@ interface PICOTTData {
 
 const Criteria = () => {
   const navigate = useNavigate();
-  const { projectData } = useProject();
+  const { projectData, setCriteriaData } = useProject();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [criteriaData, setCriteriaData] = useState<PICOTTData>({
+  const [criteriaData, setCriteriaDataState] = useState<PICOTTData>({
     population: "",
     intervention: "",
     comparator: "",
@@ -72,12 +72,37 @@ const Criteria = () => {
       navigate('/');
       return;
     } else {
-      // Load existing criteria if available
+      // Load existing criteria from project context or database
       loadExistingCriteria();
     }
   }, [projectData.id, navigate, toast]);
 
+  // Load from project context first, then from database if needed
+  useEffect(() => {
+    if (projectData.criteria && Object.keys(projectData.criteria).length > 0) {
+      setCriteriaDataState({
+        population: projectData.criteria.population || '',
+        intervention: projectData.criteria.intervention || '',
+        comparator: projectData.criteria.comparator || '',
+        outcome: projectData.criteria.outcome || '',
+        timeframe_start: projectData.criteria.timeframe_start || '',
+        timeframe_end: projectData.criteria.timeframe_end || '',
+        timeframe_description: projectData.criteria.timeframe_description || '',
+        study_designs: projectData.criteria.study_designs || [],
+        inclusion_criteria: projectData.criteria.inclusion_criteria?.length ? projectData.criteria.inclusion_criteria : [''],
+        exclusion_criteria: projectData.criteria.exclusion_criteria?.length ? projectData.criteria.exclusion_criteria : [''],
+        use_advanced_ai: projectData.criteria.use_advanced_ai || false,
+        dual_ai_review: projectData.criteria.dual_ai_review || false,
+      });
+    }
+  }, [projectData.criteria]);
+
   const loadExistingCriteria = async () => {
+    // Skip if we already have criteria in context
+    if (projectData.criteria && Object.keys(projectData.criteria).length > 0) {
+      return;
+    }
+
     try {
       const { data: criteria, error } = await supabase
         .from('screening_criteria')
@@ -90,7 +115,7 @@ const Criteria = () => {
       }
 
       if (criteria) {
-        setCriteriaData({
+        const loadedCriteria = {
           population: criteria.population || '',
           intervention: criteria.intervention || '',
           comparator: criteria.comparator || '',
@@ -103,7 +128,11 @@ const Criteria = () => {
           exclusion_criteria: Array.isArray(criteria.exclusion_criteria) ? criteria.exclusion_criteria.map(s => String(s)) : [''],
           use_advanced_ai: false,
           dual_ai_review: true
-        });
+        };
+        
+        setCriteriaDataState(loadedCriteria);
+        // Also update the project context
+        setCriteriaData(loadedCriteria);
       }
     } catch (error) {
       console.error('Error loading existing criteria:', error);
@@ -111,45 +140,54 @@ const Criteria = () => {
   };
 
   const handleInputChange = (field: keyof PICOTTData, value: any) => {
-    setCriteriaData(prev => ({ ...prev, [field]: value }));
+    setCriteriaDataState(prev => ({ ...prev, [field]: value }));
+    // Auto-update project context
+    setCriteriaData({ [field]: value });
   };
 
   const handleStudyDesignChange = (studyType: string, checked: boolean) => {
-    if (checked) {
-      setCriteriaData(prev => ({
-        ...prev,
-        study_designs: [...prev.study_designs, studyType]
-      }));
-    } else {
-      setCriteriaData(prev => ({
-        ...prev,
-        study_designs: prev.study_designs.filter(type => type !== studyType)
-      }));
-    }
+    const newStudyDesigns = checked 
+      ? [...criteriaData.study_designs, studyType]
+      : criteriaData.study_designs.filter(type => type !== studyType);
+    
+    setCriteriaDataState(prev => ({
+      ...prev,
+      study_designs: newStudyDesigns
+    }));
+    setCriteriaData({ study_designs: newStudyDesigns });
   };
 
   const handleCriteriaChange = (type: 'inclusion' | 'exclusion', index: number, value: string) => {
     const field = type === 'inclusion' ? 'inclusion_criteria' : 'exclusion_criteria';
-    setCriteriaData(prev => ({
+    const newCriteria = criteriaData[field].map((item, i) => i === index ? value : item);
+    
+    setCriteriaDataState(prev => ({
       ...prev,
-      [field]: prev[field].map((item, i) => i === index ? value : item)
+      [field]: newCriteria
     }));
+    setCriteriaData({ [field]: newCriteria });
   };
 
   const addCriteria = (type: 'inclusion' | 'exclusion') => {
     const field = type === 'inclusion' ? 'inclusion_criteria' : 'exclusion_criteria';
-    setCriteriaData(prev => ({
+    const newCriteria = [...criteriaData[field], ""];
+    
+    setCriteriaDataState(prev => ({
       ...prev,
-      [field]: [...prev[field], ""]
+      [field]: newCriteria
     }));
+    setCriteriaData({ [field]: newCriteria });
   };
 
   const removeCriteria = (type: 'inclusion' | 'exclusion', index: number) => {
     const field = type === 'inclusion' ? 'inclusion_criteria' : 'exclusion_criteria';
-    setCriteriaData(prev => ({
+    const newCriteria = criteriaData[field].filter((_, i) => i !== index);
+    
+    setCriteriaDataState(prev => ({
       ...prev,
-      [field]: prev[field].filter((_, i) => i !== index)
+      [field]: newCriteria
     }));
+    setCriteriaData({ [field]: newCriteria });
   };
 
   const validateCriteria = () => {
@@ -220,6 +258,22 @@ const Criteria = () => {
         });
 
       if (criteriaError) throw criteriaError;
+
+      // Update project context with the saved criteria
+      setCriteriaData({
+        population: criteriaData.population,
+        intervention: criteriaData.intervention,
+        comparator: criteriaData.comparator,
+        outcome: criteriaData.outcome,
+        study_designs: criteriaData.study_designs,
+        timeframe_start: criteriaData.timeframe_start,
+        timeframe_end: criteriaData.timeframe_end,
+        timeframe_description: criteriaData.timeframe_description,
+        inclusion_criteria: criteriaData.inclusion_criteria.filter(c => c.trim()),
+        exclusion_criteria: criteriaData.exclusion_criteria.filter(c => c.trim()),
+        use_advanced_ai: criteriaData.use_advanced_ai,
+        dual_ai_review: criteriaData.dual_ai_review
+      });
 
       toast({
         title: "Criteria saved successfully",
